@@ -1,0 +1,17 @@
+config.yaml
+.snakemake
+logs
+
+*.pyc
+__pycache__
+.pylintrc
+.vscode
+.pytest_cache
+*.DS_Store
+.ipynb_checkpoints/*
+*/.ipynb_checkpoints/*
+build
+*egg-info*
+
+*.c
+*.so
