@@ -28,7 +28,7 @@ conda activate spice_env
 
 2. Clone the repository:
 ```bash
-git clone https://bitbucket.org/schwarzlab/spice/src
+git clone https://tomkau@bitbucket.org/schwarzlab/spice.git
 cd spice
 ```
 
