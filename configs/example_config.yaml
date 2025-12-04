@@ -1,0 +1,5 @@
+name: 'example_run'
+input_files:
+  copynumber: 'data/example_data.tsv'
+  xy_status: 'data/example_xy_status.tsv'
+  wgd_status: 'data/example_wgd_status.tsv'

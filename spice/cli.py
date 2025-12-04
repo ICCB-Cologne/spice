@@ -1,0 +1,424 @@
+#!/usr/bin/env python
+"""Command-line interface for SPICE."""
+
+import os
+import shutil
+import yaml
+import argparse
+from joblib import Parallel, delayed
+
+# Import base package only; defer submodule imports until after config is loaded
+import spice
+
+
+def _run_batch(cur_ids, cores, desc, func, logger):
+    """Run a batch of tasks either serially or in parallel."""
+    n_jobs = cores if (cores is not None and cores > 1) else 1
+    logger.info(f"{desc}: running on {n_jobs} core(s) for {len(cur_ids)} items")
+    if n_jobs == 1:
+        results = []
+        for i, cid in enumerate(cur_ids):
+            logger.info(f'{desc}: {i+1} / {len(cur_ids)} finished ({100*i/len(cur_ids):.1f}%) - {cid}')
+            results.append(func(cid))
+        return results
+    else:
+        return Parallel(n_jobs=n_jobs)(delayed(func)(cid) for cid in cur_ids)
+
+
+def main():
+    """Main CLI entry point for SPICE."""
+    # Defer logger creation until after config is loaded
+    logger = None
+
+    parser = argparse.ArgumentParser(
+        description='SPICE: Selection Patterns In somatic Copy-number Events',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  spice --config <path/to/config>                               # Run all pipeline steps
+  spice --config <path/to/config> split                         # Run only input splitting
+  spice --config <path/to/config> all_solutions disambiguate    # Run path enumeration and kNN disambiguation
+  spice --config <path/to/config> --cores 8                     # Run with 8 cores
+  spice --config <path/to/config> plot --sample "sample_1"      # Run optional plotting for "sample_1"
+    """
+    )
+    parser.add_argument(
+        'steps',
+        nargs='*',
+        default=['all'],
+        help='Steps to run: preprocessing, split, all_solutions, disambiguate, large_chroms, combine, plot (default: all). Use a trailing + (e.g., split+) to run that step and all subsequent steps.'
+    )
+    parser.add_argument(
+        '--cores', '-j',
+        required=False, 
+        type=int, 
+        default=None, 
+        dest='cores',
+        help='Number of cores to use for parallel processing (default: 1)'
+    )
+    parser.add_argument(
+        '--config', '-c',
+        required=True,
+        type=str,
+        default=None,
+        dest='config_path',
+        help='Path to a YAML config file to merge over defaults'
+    )
+    parser.add_argument(
+        '--keep-old',
+        action='store_true',
+        help='Keep old intermediate files instead of overwriting them'
+    )
+    parser.add_argument(
+        '--total_cn',
+        action='store_true',
+        help='Clean intermediate files'
+    )
+    parser.add_argument(
+        '--clean',
+        action='store_true',
+        help='Clean intermediate files'
+    )
+    parser.add_argument(
+        '--ids',
+        type=str,
+        default=None
+    )
+    parser.add_argument(
+        '--log',
+        type=str,
+        choices=['terminal', 'file', 'both'],
+        default='terminal',
+        help='Logging output mode: terminal (console only), file (log file only), or both (default: terminal)'
+    )
+    parser.add_argument(
+        '--debug',
+        action='store_true',
+        help='Enable DEBUG logging globally, overriding config logging_level'
+    )
+    parser.add_argument(
+        '--skip-preprocessing',
+        action='store_true',
+        help='Skip the extra preprocessing step that normally runs before split'
+    )
+    # Preprocessing-specific arguments (optional)
+    parser.add_argument(
+        '--pre-unique-chroms',
+        dest='pre_unique_chroms',
+        action='store_true',
+        help='Preprocessing: keep only unique chromosomes'
+    )
+    parser.add_argument(
+        '--pre-skip-phasing',
+        dest='pre_skip_phasing',
+        action='store_true',
+        help='Preprocessing: skip MEDICC2 phasing'
+    )
+    parser.add_argument(
+        '--pre-skip-centromeres',
+        dest='pre_skip_centromeres',
+        action='store_true',
+        help='Preprocessing: skip centromere binning'
+    )
+    # Plot-specific arguments
+    parser.add_argument(
+        '--plot-sample',
+        dest='plot_sample',
+        type=str,
+        default=None,
+        help='Sample ID to plot (for step: plot)'
+    )
+    parser.add_argument(
+        '--plot-id',
+        dest='plot_id',
+        type=str,
+        default=None,
+        help='Chromosome allele ID to plot (format: sample:chr:cn_a|cn_b) (for step: plot)'
+    )
+    parser.add_argument(
+        '--plot-unit-size',
+        dest='plot_unit_size',
+        action='store_true',
+        help='Use unit_size for plotting events (applies to plot step)'
+    )
+    args = parser.parse_args()
+
+    # Handle 'all' or empty arguments, and expand trailing + syntax (e.g., split+)
+    step_order = ['preprocessing', 'split', 'all_solutions', 'disambiguate', 'large_chroms', 'combine']
+    if args.steps == ['all'] or args.steps == []:
+        which = step_order.copy()
+    elif any('+' in x for x in args.steps):
+        assert len(args.steps) == 1, 'Only one step with + is allowed'
+        assert args.steps[0].endswith('+'), 'Only trailing + syntax is supported'
+        which = step_order[step_order.index(args.steps[0][:-1]):]
+    else:
+        which = args.steps
+
+    valid_steps = step_order + ['plot', 'all']
+    invalid_steps = [step for step in which if step not in valid_steps]
+    if invalid_steps:
+        parser.error(f"Invalid step(s): {', '.join(invalid_steps)}. Valid steps are: preprocessing, split, all_solutions, disambiguate, large_chroms, combine, plot")
+
+    # Load configuration before importing submodules that may read it
+    spice.load_config(args.config_path)
+    from spice import config
+    from spice.utils import configure_logging, get_logger
+    
+    # Configure global logging settings BEFORE creating any loggers
+    # Determine logging level (override to DEBUG if --debug)
+    log_level = 'DEBUG' if args.debug else config['params'].get('logging_level', 'INFO')
+    configure_logging(
+        log_mode=args.log,
+        log_dir=config['directories']['log_dir'],
+        config_name=config['name'],
+        level=log_level,
+    )
+    
+    # Import submodules (some like medicc may call logging.config.dictConfig)
+    from spice.preprocessing.split_input import split_tsv_file
+    from spice.utils import open_pickle, log_debug, resolve_data_file, step_aware_cleanup
+    from spice import plot as spice_plot
+    from spice.event_inference.pipeline import (
+        full_paths_from_graph_with_sv_wrapper, solve_with_knn_wrapper, solve_with_mcmc_wrapper,
+        combine_final_events)
+    
+    # Create logger AFTER imports to avoid it being disabled by medicc's logging.config.dictConfig
+    logger = get_logger('SPICE')
+
+    if 'name' not in config or not config['name']:
+        logger.error("Config file must specify a 'name' field.")
+        return
+    if 'input_files' not in config or 'copynumber' not in config['input_files']:
+        logger.error("Config file must specify 'input_files.copynumber'.")
+        return
+
+    name = config['name']
+    if ' ' in name:
+        logger.error("Project name must not contain spaces.")
+        return
+    directories = config['directories']
+    results_dir = os.path.join(directories['results_dir'], name)
+    log_dir = os.path.join(directories['log_dir'])
+    plots_base_dir = os.path.join(directories['plot_dir'], name)
+    for cur_dir in [results_dir, log_dir, plots_base_dir]:
+        if not os.path.exists(cur_dir):
+            logger.info(f"Creating directory {cur_dir}")
+            os.makedirs(cur_dir)
+
+    logger.info('Running SPICE: Selection Patterns In somatic Copy-number Events')
+    logger.info(f'Running for project name {name} with config file {args.config_path}')
+
+    with open(os.path.join(results_dir, 'config.yaml'), 'wt') as f:
+        yaml.safe_dump(config, f)
+
+    if args.total_cn:
+        raise NotImplementedError('--total-cn is not implemented yet')
+
+    if args.clean:
+        logger.info(f'Cleaning intermediate files at {results_dir}')
+        for wgd in ['nowgd', 'wgd']:
+            shutil.rmtree(os.path.join(results_dir, wgd), ignore_errors=True)
+        return
+
+    logger.info(f'Results will be stored in {results_dir}')
+    logger.info(f'Running the following steps: {", ".join(which)}')
+
+    selected_ids = args.ids.split(',') if args.ids is not None else None
+    if selected_ids is not None:
+        logger.info(f'Selecting only IDs: {selected_ids}')
+
+    total_cn = config['input_files'].get('total_cn', False)
+    if total_cn:
+        raise NotImplementedError("total_cn=True is not yet supported in this version of SPICE")
+
+    # Clean old files
+    if not args.keep_old:
+        logger.info('Cleaning old intermediate files')
+        step_aware_cleanup(results_dir, which)
+
+    # Run preprocessing first unless skipped
+    if 'preprocessing' in which and not args.skip_preprocessing:
+        from spice.preprocessing.extra_preprocessing import main as extra_preprocessing_main
+        logger.info('Starting extra preprocessing step (pre-split)')
+        extra_preprocessing_main(
+            unique_chroms=bool(args.pre_unique_chroms),
+            total_cn=args.total_cn,
+            skip_phasing=bool(args.pre_skip_phasing),
+            skip_centromeres=bool(args.pre_skip_centromeres),
+        )
+    elif 'preprocessing' in which and args.skip_preprocessing:
+        logger.info('Skipping preprocessing due to --skip-preprocessing')
+
+    chrom_segments_file = resolve_data_file()
+
+    if 'split' in which:
+        logger.info('Starting splitting of the input TSV')
+        split_tsv_file(name, keep_old=args.keep_old, cores=args.cores, selected_ids=selected_ids)
+
+    if 'all_solutions' in which:
+        logger.info('Starting inference of all solutions')
+        for wgd_status in ['nowgd', 'wgd']:
+            is_wgd = (wgd_status == 'wgd')
+            cur_ids = [x.replace('.pickle', '')
+                    for x in os.listdir(os.path.join(str(results_dir), wgd_status, 'chrom_data_full'))]
+            if selected_ids is not None:
+                cur_ids = [x for x in cur_ids if x in selected_ids]
+            def run_full_paths(cur_id):
+                return full_paths_from_graph_with_sv_wrapper(
+                    cur_id=cur_id,
+                    is_wgd=(wgd_status == 'wgd'),
+                    chrom_segments_file=chrom_segments_file,
+                    sv_data_file=config['params'].get('sv_data_file', None),
+                    chrom_file=os.path.join(results_dir, wgd_status, 'chrom_data_full', f'{cur_id}.pickle'),
+                    sv_matching_threshold=config['params']['sv_matching_threshold'],
+                    time_limit_full_paths=config['params']['time_limit_full_paths'] ,
+                    time_limit_loh_filters=config['params']['time_limit_loh_filters'],
+                    use_cache=config['params']['use_cache'],
+                    total_cn=total_cn,
+                    all_loh_solutions=config['params']['all_loh_solutions'],
+                    save_output=True,
+                    skip_loh_checks=True,
+                )
+            _run_batch(cur_ids, args.cores, f'All solutions ({wgd_status})', run_full_paths, logger)
+
+    if 'disambiguate' in which:
+        logger.info('Starting KNN disambiguation of solutions with multiple paths')
+        full_paths_multiple_solutions_dirs=[os.path.join(results_dir, 'nowgd', 'full_paths_multiple_solutions'),
+                                        os.path.join(results_dir, 'wgd', 'full_paths_multiple_solutions')]
+        for wgd_status in ['nowgd', 'wgd']:
+            if not os.path.exists(os.path.join(str(results_dir), wgd_status, 'full_paths_multiple_solutions')):
+                logger.warning(f"Directory {os.path.join(str(results_dir), wgd_status, 'full_paths_multiple_solutions')} does not exist, skipping disambiguation for {wgd_status}")
+                continue
+            is_wgd = (wgd_status == 'wgd')
+            cur_ids = [x.replace('.pickle', '')
+                    for x in os.listdir(os.path.join(str(results_dir), wgd_status, 'full_paths_multiple_solutions'))]
+            if selected_ids is not None:
+                cur_ids = [x for x in cur_ids if x in selected_ids]
+            def run_knn(cur_id):
+                return solve_with_knn_wrapper(
+                    output_file=os.path.join(results_dir, wgd_status, 'knn_solved_chroms', f'{cur_id}.pickle') ,
+                    cur_id=cur_id ,
+                    is_wgd=is_wgd ,
+                    chrom_segments_file=chrom_segments_file,
+                    knn_train_data=None,
+                    k=config['params']['knn_k'],
+                    full_paths_multiple_solutions_dirs=full_paths_multiple_solutions_dirs,
+                    save_all_scores=None,
+                    perform_loh_checks=True,
+                    single_width_bin=True
+                )
+            _run_batch(cur_ids, args.cores, f'Disambiguate solutions ({wgd_status})', run_knn, logger)
+
+    if 'large_chroms' in which:
+        logger.info('Starting MCMC inference for large chromosomes with many events')
+        for wgd_status in ['nowgd', 'wgd']:
+            if not os.path.exists(os.path.join(str(results_dir), wgd_status, 'chrom_data_large')):
+                logger.warning(f"Directory {os.path.join(str(results_dir), wgd_status, 'chrom_data_large')} does not exist, skipping large chromosomes for {wgd_status}")
+                continue
+            is_wgd = (wgd_status == 'wgd')
+            cur_ids = [x.replace('.pickle', '')
+                    for x in os.listdir(os.path.join(str(results_dir), wgd_status, 'chrom_data_large'))]
+            if selected_ids is not None:
+                cur_ids = [x for x in cur_ids if x in selected_ids]
+            def run_mcmc(cur_id):
+                return solve_with_mcmc_wrapper(
+                    output_file=os.path.join(results_dir, wgd_status, 'mcmc_solved_chroms_large', f'{cur_id}.pickle'),
+                    chrom_file=os.path.join(results_dir, wgd_status, 'chrom_data_large', f'{cur_id}.pickle'),
+                    is_wgd=is_wgd,
+                    chrom_segments_file=chrom_segments_file,
+                    sv_data_file=config['params'].get('sv_data_file', None),
+                    knn_train_data=None,
+                    k=config['params']['knn_k'],
+                    total_cn=total_cn,
+                    save_all_scores=None,
+                    n_iteration_scale=config['params']['mcmc_n_iterations_scale'],
+                    log_progress=True,
+                    fail_on_empty=False,
+                    perform_loh_checks=True
+                )
+            _run_batch(cur_ids, args.cores, f'Large chromosomes ({wgd_status})', run_mcmc, logger)
+
+    if 'combine' in which:
+        logger.info('Starting combination of final events from all solving methods')
+        solved_dirs = (
+            [os.path.join(results_dir, wgd, 'knn_solved_chroms') for wgd in ['nowgd', 'wgd']] +
+            [os.path.join(results_dir, wgd, 'full_paths_single_solution') for wgd in ['nowgd', 'wgd']] +
+            [os.path.join(results_dir, wgd, 'mcmc_solved_chroms_full') for wgd in ['nowgd', 'wgd']] +
+            [os.path.join(results_dir, wgd, 'mcmc_solved_chroms_large') for wgd in ['nowgd', 'wgd']]
+        )
+        combine_final_events(
+            solved_dirs=solved_dirs,
+            chrom_segments_file=chrom_segments_file,
+            sv_data=config['input_files'].get('sv', None),
+            sv_matching_threshold=config['params']['sv_matching_threshold'],
+            knn_train_data=None,
+            knn_k=config['params']['knn_k'],
+            output_dir=results_dir
+        )
+
+    # Optional plotting step
+    if 'plot' in which:
+        import pandas as pd
+        from matplotlib import pyplot as plt
+
+        logger.info('Starting plotting of inferred events')
+
+        # Validate plot target
+        if args.plot_sample is None and args.plot_id is None:
+            logger.error('Plot step requires either --plot-sample or --plot-id')
+            return
+        if args.plot_sample is not None and args.plot_id is not None:
+            logger.error('Provide only one of --plot-sample or --plot-id')
+            return
+
+        # Load required inputs
+        if not os.path.exists(os.path.join(results_dir, 'final_events.tsv')):
+            logger.error(f"final_events.tsv not found in {results_dir}. Run 'combine' first.")
+            return
+
+        chrom_segments = pd.read_csv(
+            chrom_segments_file, sep='\t', index_col=['sample_id', 'chrom', 'allele']).sort_index()
+        final_events_df = pd.read_csv(
+            os.path.join(results_dir, 'final_events.tsv'), sep='\t', dtype={'cn': str, 'diff': str})
+
+
+        # assert that exactly one of args.plot_sample or args.plot_id is not None
+        assert (args.plot_sample is not None) ^ (args.plot_id is not None), 'For plotting either --plot-sample or --plot-id have to be set'
+
+        if args.plot_sample is not None:
+            cur_sample = args.plot_sample
+            logger.info(f'Plotting inferred events for sample: {cur_sample}')
+            fig, axs = spice_plot.plot_inferred_events_per_sample(
+                cur_sample,
+                chrom_segments,
+                final_events_df,
+                unit_size=args.plot_unit_size,
+            )
+            out_path = os.path.join(plots_base_dir, f'{cur_sample}_events{"_unit_size" if args.plot_unit_size else ""}.png')
+            fig.savefig(out_path, bbox_inches='tight')
+            logger.info(f'Saved plot to {out_path}')
+        else:
+            cur_id = args.plot_id
+            logger.info(f'Plotting inferred events for id: {cur_id}')
+            # Derive WIDTH_FULL from matplotlib defaults if not provided
+            WIDTH_FULL = plt.rcParams.get('figure.figsize', (15, 5))[0]
+            fig = spice_plot.plot_inferred_events_per_id(
+                cur_id,
+                chrom_segments,
+                final_events_df,
+                single_row=True,
+                show_legend=True,
+                figsize=(WIDTH_FULL, 1.25/5*WIDTH_FULL),
+                lw=3,
+                markersize=4
+            )
+            safe_id = cur_id.replace(':', '_')
+            out_path = os.path.join(plots_base_dir, f'{safe_id}_events.png')
+            fig.savefig(out_path, bbox_inches='tight')
+            logger.info(f'Saved plot to {out_path}')
+
+    logger.info(f'Done. Results are in {results_dir}')
+
+
+if __name__ == '__main__':
+    main()

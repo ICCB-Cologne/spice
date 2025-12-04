@@ -12,6 +12,15 @@ __pycache__
 */.ipynb_checkpoints/*
 build
 *egg-info*
+.github
 
 *.c
 *.so
+
+*.pickle
+*.placeholder
+*.tsv
+
+logs/*
+results/*
+plots/*
