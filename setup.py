@@ -18,6 +18,7 @@ setup(
         'seaborn',
         'tqdm',
         'fire',
+        'CNSistent',
         'pandas',
         'pyyaml',
         'joblib',
