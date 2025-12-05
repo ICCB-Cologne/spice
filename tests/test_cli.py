@@ -316,3 +316,27 @@ class TestExecution:
             text=True,
         )
         assert result.returncode == 0
+
+    def test_potting(self, temp_workspace):
+        tmpdir, config_path = temp_workspace
+        
+        for plot_flags in [['--plot-sample', 'LAdrenalMet_A31E-0018_CRUK_PC_0018_M3'],
+                           ['--plot-id', 'LAdrenalMet_A31E-0018_CRUK_PC_0018_M3:chr1:cn_a']]:
+            result = subprocess.run(
+                ['spice', 'plot', '--config', config_path] + plot_flags,
+                capture_output=True,
+                text=True,
+        )
+        assert result.returncode == 0
+
+
+    def test_clean(self, temp_workspace):
+        tmpdir, config_path = temp_workspace
+        
+        result = subprocess.run(
+            ['spice', '--clean', '--config', config_path],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+

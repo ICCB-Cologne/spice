@@ -155,6 +155,10 @@ def step_aware_cleanup(results_dir, requested_steps=None):
     name = config.get('name')
 
     step_order = ['preprocessing', 'split', 'all_solutions', 'disambiguate', 'large_chroms', 'combine']
+    if requested_steps and all(s not in step_order for s in (requested_steps or [])):
+        log_debug(logger, 'No step-aware cleanup requested (no --keep-old).')
+        return
+
     step_targets = {
         'preprocessing': [
             ('__data__', f'{name}_processed.tsv'),
