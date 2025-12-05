@@ -193,7 +193,7 @@ Notes for plotting:
 - Output PNGs are saved to `plot_dir/{name}/` (see `directories.plot_dir` in config; defaults to `plots/`).
 - `--plot-unit-size` switches per-sample plots to unit-size segments.
 
-For interactive exploration, see `notebooks/plotting.ipynb`. It shows:
+For interactive exploration, see `notebooks/plotting.ipynb`.
 
 
 ### Run specific pipeline steps (Advanced)
