@@ -243,8 +243,10 @@ Required columns:
 - `chrom`: Chromosome name
 - `start`: Segment start position
 - `end`: Segment end position
-- `cn_a`: Copy number for allele A (haplotype-specific) or total CN
+- `cn_a`: Copy number for allele A (haplotype-specific)
 - `cn_b`: Copy number for allele B (haplotype-specific only)
+
+Note that total copy-numbers are not yet supported.
 
 ## Output
 
