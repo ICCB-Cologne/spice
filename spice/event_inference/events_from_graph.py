@@ -40,10 +40,6 @@ def full_paths_from_graph_with_sv(cur_id, is_wgd, sv_data, chrom_segments, chrom
     log_debug(logger, f'Creating full paths ({"without" if sv_data is None else "with"} SV overlaps) for {cur_id} {"WGD" if is_wgd else "noWGD"}. Nr events: {chrom.n_events}. CN profile: {cn_profile}')
     log_debug(logger, 'Using cache' if use_cache else 'Not using cache')
     
-    # the following is used to simulate server-timeout for local testing
-    if config['name'] in ['pcawg_example', 'pcawg_example_nowgd'] and cur_id == '00db4dc2-3ec7-4ff9-9233-d69c8c8a607f:chr10:cn_a':
-        raise NotImplementedError('Simulating server-timeout')
-
     if is_wgd:
         diffs, sv_selected_events = _full_paths_from_graph_with_sv_wgd(
             cn_profile=cn_profile,
