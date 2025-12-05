@@ -61,7 +61,7 @@ def main(
     data = data_loaders.load_cn_tsv(config['input_files']['copynumber'])[['sample_id', 'chrom', 'start', 'end', 'cn_a', 'cn_b']]
 
     # assert data.index.get_level_values('sample_id').nunique() == len(drews_whitelist), (data.index.get_level_values('sample_id').nunique(), len(drews_whitelist))
-    data['start'] -= 1  # change such that start begins at 0
+    data.loc[data['start'] == 1, 'start'] = 0 # change such that start begins at 0
     data[['start', 'end']] = data[['start', 'end']].astype(int)
     log_debug(logger, f"Found {data['sample_id'].nunique()} samples with a total of {len(data.drop_duplicates(['sample_id', 'chrom']))} unique chromosomes and {len(data)} entries")
     # data = data.set_index(['sample_id', 'chrom', 'start', 'end'])
