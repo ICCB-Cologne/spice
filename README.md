@@ -276,8 +276,10 @@ snakemake --rerun-triggers mtime --slurm -j250 --keep-going
 
 ### Python API
 
-You can also import and use SPICE functions directly in Python:
+You can also import and use SPICE functions directly in Python. Note that it is important to run `spice.load_config(config_file)` before any other spice imports.
 ```python
+import spice
+spice.load_config(config_file)
 from spice.pipeline import full_paths_from_graph_with_sv_wrapper
 from spice.knn_graph import solve_with_knn
 from spice.mcmc_for_large_chroms import mcmc_event_selection
