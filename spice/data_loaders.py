@@ -1,5 +1,4 @@
 import os
-import sys
 import re
 from pathlib import Path
 
@@ -8,8 +7,8 @@ import numpy as np
 from tqdm.auto import tqdm
 
 from spice import config, directories
-from spice.utils import (CALC_NEW, open_pickle, save_pickle, get_logger, filter_dat_based_on_ids,
-                                 calc_telomere_bound_whole_arm_whole_chrom, log_debug)
+from spice.utils import (CALC_NEW, open_pickle, save_pickle, get_logger,
+                                 calc_telomere_bound_whole_arm_whole_chrom)
 
 
 logger = get_logger('data_loaders')

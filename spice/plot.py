@@ -11,7 +11,7 @@ import seaborn as sns
 from scipy.stats import linregress, t
 
 from spice import config, data_loaders
-from spice.utils import chrom_id_from_id, get_logger, latex_10_notation, get_diffs_from_events_df, linkage_order
+from spice.utils import chrom_id_from_id, get_logger, get_diffs_from_events_df, linkage_order
 from spice.event_inference.events_from_graph import raw_events_from_FullPaths
 from spice.event_inference.mcmc_for_large_chroms import _get_events_from_diff
 from spice.event_inference.data_structures import FullPaths
@@ -2049,3 +2049,30 @@ def plot_inferred_events_per_sample(
     plt.subplots_adjust(bottom=0.05)
 
     return fig, axss
+
+
+
+def latex_10_notation(n, k=2):
+
+    if n == -1:
+        return r'$-1$'
+    if n == 0:
+        return r'$0$'
+
+    if n<0:
+        sign = -1
+        n = -n
+    else:
+        sign = 1
+
+    power = int(np.floor(np.log10(n)))
+    number = np.round(n/(10**(power)), k)
+
+    if number/10 >= 1:
+        number /= 10
+        power += 1
+
+    if k == 0:
+        number = int(number)
+
+    return ('-' if sign == -1 else '') + r'${{{}}}\cdot 10^{{{}}}$'.format(number, power)

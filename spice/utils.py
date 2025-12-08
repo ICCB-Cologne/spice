@@ -1,7 +1,6 @@
 import logging
 import os
 import pickle
-import signal
 import re
 import itertools
 import warnings
@@ -247,38 +246,6 @@ def get_sister_allele(cur_id):
     else:
         return cur_id.replace("cn_b", "cn_a")
 
-
-def remove_duplicate_diffs(all_diffs):
-    '''should be placed in a better place than here!'''
-    all_diffs = [cur_diff[np.lexsort(cur_diff.T)] for cur_diff in all_diffs]
-    all_diffs = np.stack(all_diffs, axis=0)
-    all_diffs = np.unique(all_diffs, axis=(0))
-    return all_diffs
-
-
-def is_empty(x):
-    '''works on both lists and nd.arrays'''
-    return getattr(x, 'size', len(x)) == 0
-
-
-class timeout:
-    def __init__(self, seconds=1, throw_error=True, error_message='Timeout'):
-        self.seconds = seconds
-        self.error_message = error_message
-        self.throw_error = throw_error
-
-    def handle_timeout(self, signum, frame):
-        if self.throw_error:
-            raise TimeoutError(self.error_message)
-
-    def __enter__(self):
-        signal.signal(signal.SIGALRM, self.handle_timeout)
-        signal.alarm(self.seconds)
-
-    def __exit__(self, type, value, traceback):
-        signal.alarm(0)
-
-
 class CALC_NEW_SKIP():
     def __repr__(self):
         return 'CALC_NEW skip signal'
@@ -395,32 +362,6 @@ def save_pickle(obj, filename, create_dir_if_not_exists=True):
         pickle.dump(obj, f)
 
 
-def latex_10_notation(n, k=2):
-
-    if n == -1:
-        return r'$-1$'
-    if n == 0:
-        return r'$0$'
-
-    if n<0:
-        sign = -1
-        n = -n
-    else:
-        sign = 1
-
-    power = int(np.floor(np.log10(n)))
-    number = np.round(n/(10**(power)), k)
-
-    if number/10 >= 1:
-        number /= 10
-        power += 1
-
-    if k == 0:
-        number = int(number)
-
-    return ('-' if sign == -1 else '') + r'${{{}}}\cdot 10^{{{}}}$'.format(number, power)
-
-
 def linkage_order(data):
     import scipy.cluster.hierarchy as shc
     linkage = shc.linkage(data, method='ward')
@@ -429,14 +370,7 @@ def linkage_order(data):
     return dend['leaves']
 
 
-def safe_np_stack(x, axis=0):
-    if len(x) == 0:
-        return np.array([])
-    else:
-
-        return np.stack(x, axis=axis)
-
-
+# TODO: Create to events_from_graph?
 def create_full_df_from_diff_df(df, cur_id, cur_chrom_segments, chrom_lengths=None,
                                 calc_telomere_bound=True):
     if chrom_lengths is None:
@@ -535,21 +469,6 @@ def calc_centromere_bound(data):
 
 
 @CALC_NEW()
-def filter_dat_based_on_ids(dat, all_ids, nowgd_samples=None, verbose=False):
-
-    if nowgd_samples is None:
-        nowgd_samples = dat['sample_id'].unique()
-    dat_filtered = dat.copy()
-    for (cur_sample, cur_chrom) in tqdm(dat[['sample_id', 'chrom']].drop_duplicates().values, disable=(not verbose)):
-        if f'{cur_sample}:{cur_chrom}:cn_a' not in all_ids:
-            dat_filtered.loc[dat_filtered.eval('sample_id == @cur_sample and chrom == @cur_chrom'), 'cn_a'] = 1 if cur_sample in nowgd_samples else 2
-        if f'{cur_sample}:{cur_chrom}:cn_b' not in all_ids:
-            dat_filtered.loc[dat_filtered.eval('sample_id == @cur_sample and chrom == @cur_chrom'), 'cn_b'] = 1 if cur_sample in nowgd_samples else 2
-
-    return dat_filtered
-
-
-@CALC_NEW()
 def create_chrom_type_pos_indices(events_df):
     assert (events_df.index == np.arange(len(events_df))).all(), "index has to be 0, 1, 2, 3, ..."
     chrom_type_pos_indices = dict()
@@ -573,41 +492,6 @@ def create_full_paths_events_df(cur_full_paths, chrom_segments):
     return cur_events_df
 
 
-def create_chrom_from_string(string, has_wgd=True, total_cn=False):
-    import fstlib
-    from spice.event_inference.fst_assets import T_forced_WGD, get_diploid_fsa, fsa_from_string, nowgd_fst
-    from spice.event_inference.data_structures import ChromData
-    diploid_fsa = get_diploid_fsa(total_copy_numbers=total_cn)
-    cur_id = 'test:chr1:cn_a'
-    sample = 'test'
-    cur_chrom = 'chr1'
-    cur_allele = 'cn_a'
-    cn_profile = np.array([int(x) for x in string])
-    if has_wgd:
-        dist = int(float(fstlib.score(T_forced_WGD, diploid_fsa, fsa_from_string(string))))
-        n_events = max(1, dist - 1)
-    else:
-        dist = int(float(fstlib.score(nowgd_fst, diploid_fsa, fsa_from_string(string))))
-        n_events = dist
-    has_wgd = has_wgd
-    chrom = ChromData(
-        cur_id, sample, cur_chrom, cur_allele, cn_profile, string, dist, n_events, has_wgd, 'test'
-    )
-
-    n = len(string)
-    cur_chrom_segments = pd.DataFrame({
-        'sample_id': n*['test'],
-    'chrom': n*[cur_chrom],
-    'allele': n*[cur_allele],
-    'start': np.arange(n),
-    'end': np.arange(n)+1,
-    'cn': cn_profile,
-    'id': n*[cur_id],
-    })
-
-    return chrom, cur_chrom_segments
-
-
 def set_logging_level(logger, level):
     logging_values = {
         'silent': 'WARNING',
@@ -617,7 +501,7 @@ def set_logging_level(logger, level):
     assert level in ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
     logger.setLevel(level)
 
-
+ # TODO: move
 def get_diffs_from_events_df(cur_id, events_df, supported_chains_only=False):
     cur_events = events_df.query("id == @cur_id")
 
@@ -648,19 +532,6 @@ def get_diffs_from_events_df(cur_id, events_df, supported_chains_only=False):
     return all_diffs
 
 
-def spearman_permutation_p_value(x, y):
-    '''From https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.spearmanr.html'''
-    dof = len(x)-2
-    corr, p_raw = spearmanr(x, y)
-    def statistic(x):  # explore all possible pairings by permuting `x`
-        rs = spearmanr(x, y).statistic  # ignore pvalue
-        transformed = rs * np.sqrt(dof / ((rs+1.0)*(1.0-rs)))
-        return transformed
-    ref = permutation_test((x,), statistic, alternative='greater' if corr > 0 else 'less',
-                                permutation_type='pairings')
-    return ref.pvalue
-
-
 def suppress_warnings(warning_type=None):
     def decorator(func):
         @wraps(func)
@@ -678,7 +549,6 @@ def suppress_warnings(warning_type=None):
 def log_debug(logger, msg):
     if logger.level == logging.DEBUG:
         logger.debug(msg)
-
 
 def save_fail_reports(failed_reports, results_dir=None, logger=None):
     if results_dir is None:
