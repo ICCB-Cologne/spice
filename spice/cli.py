@@ -152,6 +152,13 @@ Examples:
     from spice.event_inference.pipeline import (
         full_paths_from_graph_with_sv_wrapper, solve_with_knn_wrapper, solve_with_mcmc_wrapper,
         combine_final_events)
+
+    if 'name' not in config or not config['name']:
+        logger.error("Config file must specify a 'name' field.")
+        return
+    if 'input_files' not in config or 'copynumber' not in config['input_files']:
+        logger.error("Config file must specify 'input_files.copynumber'.")
+        return
     
     # Create logger AFTER imports to avoid it being disabled by medicc's logging.config.dictConfig
     log_level = 'DEBUG' if args.debug else config['params'].get('logging_level', 'INFO')
@@ -162,13 +169,6 @@ Examples:
         level=log_level,
     )    
     logger = get_logger('SPICE')
-
-    if 'name' not in config or not config['name']:
-        logger.error("Config file must specify a 'name' field.")
-        return
-    if 'input_files' not in config or 'copynumber' not in config['input_files']:
-        logger.error("Config file must specify 'input_files.copynumber'.")
-        return
 
     name = config['name']
     if ' ' in name:
