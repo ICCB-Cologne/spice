@@ -154,11 +154,9 @@ Examples:
         combine_final_events)
 
     if 'name' not in config or not config['name']:
-        logger.error("Config file must specify a 'name' field.")
-        return
+        raise ValueError("Config file must specify a 'name' field.")
     if 'input_files' not in config or 'copynumber' not in config['input_files']:
-        logger.error("Config file must specify 'input_files.copynumber'.")
-        return
+        raise ValueError("Config file must specify 'input_files.copynumber'.")
     
     # Create logger AFTER imports to avoid it being disabled by medicc's logging.config.dictConfig
     log_level = 'DEBUG' if args.debug else config['params'].get('logging_level', 'INFO')

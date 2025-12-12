@@ -24,7 +24,7 @@ def _read_yaml(path):
     with open(path, 'rt') as f:
         return yaml.safe_load(f.read())
 
-def load_config(config_path: str | None = None):
+def load_config(config_path: str | None = None, assert_exists: bool = True):
     """
     Load SPICE configuration by merging default_config.yaml with an optional user config.
 
@@ -33,8 +33,9 @@ def load_config(config_path: str | None = None):
     """
     global default_config, config, directories
 
-    # set os.environ['SPICE_CONFIG']
     if config_path is not None:
+        if not os.path.exists(config_path):
+            raise FileNotFoundError(f"Configuration file not found at provided path: '{config_path}'.")
         set_config(config_path)
 
     # Always load the default first
