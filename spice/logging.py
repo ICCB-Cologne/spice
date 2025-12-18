@@ -70,6 +70,8 @@ def configure_logging(log_mode, log_dir, config_name, level: str = 'INFO'):
         # Add file handler if needed and available
         if log_mode in ['file', 'both'] and _LOGGING_CONFIG['file_handler'] is not None:
             logger.addHandler(_LOGGING_CONFIG['file_handler'])
+        # Prevent double logging by disabling propagation
+        logger.propagate = False
 
 
 def get_logger(name, spice_prefix=True, load_config=True, config_file=None):
@@ -124,6 +126,9 @@ def get_logger(name, spice_prefix=True, load_config=True, config_file=None):
     # Add file handler if needed and available
     if log_mode in ['file', 'both'] and _LOGGING_CONFIG['file_handler'] is not None:
         logger.addHandler(_LOGGING_CONFIG['file_handler'])
+
+    # Prevent double logging by disabling propagation
+    logger.propagate = False
 
     return logger
 
