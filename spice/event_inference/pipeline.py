@@ -339,6 +339,8 @@ def combine_final_events(solved_dirs, chrom_segments_file=None, sv_data=None,
             solved_events.append(cur_events[EVENT_DF_COLUMNS].values)
     log_debug(logger, f'Found {len(solved_events)} solved IDs')
 
+    if len(solved_events) == 0:
+        raise ValueError('No solved events found in the provided directories')
     final_events_df = pd.DataFrame(np.concatenate(solved_events, axis=0), columns=EVENT_DF_COLUMNS).astype(dtype=EVENT_DF_DTYPES)
     log_debug(logger, f'Found a total of {len(final_events_df)} events in the final df')
     final_events_df = final_events_df[EVENT_DF_COLUMNS]
