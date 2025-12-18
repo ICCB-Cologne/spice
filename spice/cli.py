@@ -346,7 +346,7 @@ Examples:
                     logger.warning(f'MCMC solving for {cur_id} timed out after {config["params"]["time_limit_mcmc"]} seconds. Will rerun with LOH checks skipped. This might lead to inaccurate results! Consider increasing "time_limit_mcmc" in the config file.')
                     return _solve_with_mcmc_wrapper(cur_id, skip_loh_check=True)
 
-            results = _run_batch(cur_ids[:2], args.cores, f'Large chromosomes ({wgd_status})', run_mcmc, logger)
+            results = _run_batch(cur_ids, args.cores, f'Large chromosomes ({wgd_status})', run_mcmc, logger)
             cur_failed_reports = [r for r in results if isinstance(r, dict) and r.get('status') == 'failed']
             failed_reports.extend(cur_failed_reports)
             save_fail_reports(cur_failed_reports, cur_step=wgd_status + '_large_chroms')
