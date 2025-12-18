@@ -29,10 +29,10 @@ params:
   mcmc_max_T: -6
   mcmc_min_T: 1
   mcmc_n_iterations_scale: 200
-  # Time limits
-  time_limit_full_paths: 60
-  time_limit_loh_filters: 60
-  time_limit_mcmc: None
+  # Time limits (in seconds, per chromosome)
+  time_limit_all_solutions: 60
+  time_limit_loh_filters: None
+  time_limit_mcmc: 60
   # Cluster parameters for Snakemake
   knn_mem: 16000
   full_path_mem: 16000

@@ -47,7 +47,7 @@ def temp_workspace():
                 'full_path_dist_limit': 9,
                 'knn_k': 250,
                 'sv_matching_threshold': 10,
-                'time_limit_full_paths': 60,
+                'time_limit_all_solutions': 60,
                 'time_limit_loh_filters': 60,
                 'all_loh_solutions': False,
                 'use_cache': True,

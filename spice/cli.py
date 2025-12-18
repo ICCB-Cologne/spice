@@ -146,6 +146,7 @@ Examples:
     spice.load_config(args.config_path)
     from spice import config
     from spice.data_loaders import load_final_events, resolve_data_file
+    from spice.utils import timeout
     from spice.logging import configure_logging, get_logger
     from spice.cli_functions import save_fail_reports, step_aware_cleanup, _run_batch
     from spice.preprocessing.split_input import split_tsv_file
@@ -239,6 +240,7 @@ Examples:
                     for x in os.listdir(os.path.join(str(results_dir), wgd_status, 'chrom_data_full'))]
             if selected_ids is not None:
                 cur_ids = [x for x in cur_ids if x in selected_ids]
+            @timeout(config['params']['time_limit_all_solutions'], mode="auto")
             def run_full_paths(cur_id):
                 return full_paths_from_graph_with_sv_wrapper(
                     cur_id=cur_id,
@@ -247,7 +249,7 @@ Examples:
                     sv_data_file=config['params'].get('sv_data_file', None),
                     chrom_file=os.path.join(results_dir, wgd_status, 'chrom_data_full', f'{cur_id}.pickle'),
                     sv_matching_threshold=config['params']['sv_matching_threshold'],
-                    time_limit_full_paths=config['params']['time_limit_full_paths'] ,
+                    time_limit_all_solutions=config['params']['time_limit_all_solutions'] ,
                     time_limit_loh_filters=config['params']['time_limit_loh_filters'],
                     use_cache=config['params']['use_cache'],
                     total_cn=total_cn,
@@ -305,6 +307,8 @@ Examples:
                     for x in os.listdir(os.path.join(str(results_dir), wgd_status, 'chrom_data_large'))]
             if selected_ids is not None:
                 cur_ids = [x for x in cur_ids if x in selected_ids]
+
+            @timeout(config['params']['time_limit_mcmc'], mode="auto")
             def run_mcmc(cur_id):
                 return solve_with_mcmc_wrapper(
                     output_file=os.path.join(results_dir, wgd_status, 'mcmc_solved_chroms_large', f'{cur_id}.pickle'),

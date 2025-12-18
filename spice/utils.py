@@ -1,3 +1,4 @@
+
 import logging
 import os
 import pickle
@@ -5,7 +6,9 @@ import re
 import itertools
 import warnings
 from functools import wraps
-from datetime import datetime
+import functools
+import threading
+import signal
 
 from tqdm.auto import tqdm
 import pandas as pd
@@ -321,5 +324,85 @@ def suppress_warnings(warning_type=None):
     return decorator
 
 
- 
+class FunctionTimeoutError(TimeoutError):
+    pass
 
+
+def timeout(seconds, mode="auto", error=FunctionTimeoutError):
+    if seconds <= 0:
+        raise ValueError("seconds must be > 0")
+
+    def _run_with_signal(func, *args, **kwargs):
+        if threading.current_thread() is not threading.main_thread():
+            raise RuntimeError("signal timeouts only work in the main thread")
+
+        def _handle(signum, frame):
+            raise error(f"{func.__name__} timed out after {seconds} seconds")
+
+        old = signal.signal(signal.SIGALRM, _handle)
+        signal.setitimer(signal.ITIMER_REAL, seconds)
+        try:
+            return func(*args, **kwargs)
+        finally:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+            signal.signal(signal.SIGALRM, old)
+
+    def _run_in_process(func, *args, **kwargs):
+        try:
+            from joblib.externals.loky import get_reusable_executor
+        except Exception:
+            import multiprocessing as mp
+            import queue
+
+            q = mp.Queue(1)
+
+            def runner(q_, a, k):
+                try:
+                    q_.put(("ok", func(*a, **k)))
+                except BaseException as e:
+                    q_.put(("err", e))
+
+            p = mp.Process(target=runner, args=(q, args, kwargs), daemon=True)
+            p.start()
+            try:
+                status, payload = q.get(timeout=seconds)
+            except queue.Empty:
+                p.terminate()
+                p.join(timeout=1)
+                raise error(f"{func.__name__} timed out after {seconds} seconds")
+
+            p.join(timeout=1)
+            if status == "ok":
+                return payload
+            raise payload
+
+        ex = get_reusable_executor(max_workers=1)
+        fut = ex.submit(func, *args, **kwargs)
+        try:
+            return fut.result(timeout=seconds)
+        except TimeoutError:
+            try:
+                fut.cancel()
+            finally:
+                try:
+                    ex.shutdown(wait=False, kill_workers=True)
+                except TypeError:
+                    ex.shutdown(wait=False)
+            raise error(f"{func.__name__} timed out after {seconds} seconds")
+
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            m = mode.lower()
+            if m == "process":
+                return _run_in_process(func, *args, **kwargs)
+            if m == "signal":
+                return _run_with_signal(func, *args, **kwargs)
+
+            if threading.current_thread() is threading.main_thread():
+                return _run_with_signal(func, *args, **kwargs)
+            return _run_in_process(func, *args, **kwargs)
+
+        return wrapper
+
+    return decorator

@@ -48,7 +48,7 @@ EVENT_DF_DTYPES = {
 
 
 def full_paths_from_graph_with_sv_wrapper(cur_id, is_wgd, sv_data_file, chrom_segments_file, chrom_file,
-                                          sv_matching_threshold=10, time_limit_full_paths=60, without_sv_output_dir=False,
+                                          sv_matching_threshold=10, time_limit_all_solutions=60, without_sv_output_dir=False,
                                           time_limit_loh_filters=60, all_loh_solutions=True, total_cn=False,
                                           skip_loh_checks=False, use_cache=True, save_output=True):
     
@@ -70,7 +70,7 @@ def full_paths_from_graph_with_sv_wrapper(cur_id, is_wgd, sv_data_file, chrom_se
     chrom = open_pickle(chrom_file)
 
     full_paths = full_paths_from_graph_with_sv(
-        cur_id, is_wgd, cur_sv_data, chrom_segments, chrom, time_limit=time_limit_full_paths, path_limit=None,
+        cur_id, is_wgd, cur_sv_data, chrom_segments, chrom, time_limit=time_limit_all_solutions, path_limit=None,
         time_limit_loh_filters=time_limit_loh_filters, sv_matching_threshold=sv_matching_threshold, total_cn=total_cn,
         all_loh_solutions=all_loh_solutions, use_cache=use_cache, skip_loh_checks=skip_loh_checks)
 
