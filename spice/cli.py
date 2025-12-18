@@ -165,7 +165,7 @@ Examples:
         log_dir=config['directories']['log_dir'],
         config_name=config['name'],
         level=log_level,
-    )    
+    )
     logger = get_logger('SPICE')
 
     name = config['name']

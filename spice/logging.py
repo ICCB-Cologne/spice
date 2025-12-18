@@ -27,6 +27,7 @@ def configure_logging(log_mode, log_dir, config_name, level: str = 'INFO'):
     """
     global _LOGGING_CONFIG
 
+
     _LOGGING_CONFIG['mode'] = log_mode
     _LOGGING_CONFIG['log_dir'] = log_dir
     _LOGGING_CONFIG['config_name'] = config_name
@@ -47,6 +48,18 @@ def configure_logging(log_mode, log_dir, config_name, level: str = 'INFO'):
 
         if log_mode == 'file':
             print(f"Logging to file: {log_path}")
+
+    # Set the level for all active loggers
+    logging_level = level.upper()
+    logging_values = {
+        'SILENT': 'WARNING',
+        'VERBOSE': 'DEBUG',
+    }
+    logging_level = logging_values.get(logging_level, logging_level)
+    assert logging_level in ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
+    for logger_name in list(logging.Logger.manager.loggerDict.keys()):
+        logger = logging.getLogger(logger_name)
+        logger.setLevel(logging_level)
 
 
 def get_logger(name, load_config=True, config_file=None):
