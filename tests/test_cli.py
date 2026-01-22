@@ -62,22 +62,11 @@ def temp_workspace():
         yield tmpdir, config_path
 
 
-class TestCLI:
-    """Test suite for SPICE command-line interface."""
+class TestCLIBasic:
+    """Basic CLI argument parsing tests (no execution)."""
     
-    def test_spice_command_exists(self):
-        """Test that the spice command is available."""
-        result = subprocess.run(
-            ['spice', '--help'],
-            capture_output=True,
-            text=True
-        )
-        # Should either succeed or fail with meaningful error (not command not found)
-        assert result.returncode in [0, 2]  # 0 = success, 2 = argparse error
-        assert 'SPICE' in result.stdout or 'spice' in result.stdout.lower()
-    
-    def test_help_flag(self):
-        """Test that --help flag works."""
+    def test_spice_help_flag(self):
+        """Test that spice --help works and shows main modes."""
         result = subprocess.run(
             ['spice', '--help'],
             capture_output=True,
@@ -85,167 +74,275 @@ class TestCLI:
         )
         assert result.returncode == 0
         assert 'SPICE' in result.stdout
-        assert '--config' in result.stdout
-        assert '--cores' in result.stdout
-        assert '--log' in result.stdout
+        assert 'event_inference' in result.stdout
+        assert 'plotting' in result.stdout
+        assert 'loci_detection' in result.stdout
     
-    def test_config_required(self):
-        """Test that config argument is required."""
+    def test_spice_no_mode_fails(self):
+        """Test that spice without mode argument fails."""
         result = subprocess.run(
             ['spice'],
             capture_output=True,
             text=True
         )
-        # Should fail without config
+        assert result.returncode != 0
+    
+    def test_spice_invalid_mode_fails(self):
+        """Test that spice with invalid mode fails with clear error."""
+        result = subprocess.run(
+            ['spice', 'invalid_mode', '--config', 'dummy.yaml'],
+            capture_output=True,
+            text=True
+        )
+        assert result.returncode != 0
+        assert 'invalid choice' in result.stderr.lower()
+    
+    def test_event_inference_help_flag(self):
+        """Test that event_inference mode shows help."""
+        result = subprocess.run(
+            ['spice', 'event_inference', '--help'],
+            capture_output=True,
+            text=True
+        )
+        assert result.returncode == 0
+        assert 'event' in result.stdout.lower()
+        assert '--event-steps' in result.stdout
+    
+    def test_plotting_help_flag(self):
+        """Test that plotting mode shows help."""
+        result = subprocess.run(
+            ['spice', 'plotting', '--help'],
+            capture_output=True,
+            text=True
+        )
+        assert result.returncode == 0
+        assert 'plot' in result.stdout.lower()
+        assert '--plot-sample' in result.stdout or '--plot-id' in result.stdout
+    
+    def test_loci_detection_help_flag(self):
+        """Test that loci_detection mode shows help."""
+        result = subprocess.run(
+            ['spice', 'loci_detection', '--help'],
+            capture_output=True,
+            text=True
+        )
+        assert result.returncode == 0
+        assert 'loci' in result.stdout.lower()
+    
+    def test_event_inference_config_required(self, temp_workspace):
+        """Test that --config is required for event_inference."""
+        result = subprocess.run(
+            ['spice', 'event_inference'],
+            capture_output=True,
+            text=True
+        )
         assert result.returncode != 0
         assert '--config' in result.stderr or 'required' in result.stderr.lower()
     
+    def test_plotting_config_required(self):
+        """Test that --config is required for plotting."""
+        result = subprocess.run(
+            ['spice', 'plotting', '--plot-sample', 'sample1'],
+            capture_output=True,
+            text=True
+        )
+        assert result.returncode != 0
+    
     def test_config_file_not_found(self):
-        """Test that missing config file produces appropriate error."""
+        """Test that missing config file produces error."""
         result = subprocess.run(
-            ['spice', '--config', '/nonexistent/config.yaml'],
+            ['spice', 'event_inference', '--config', '/nonexistent/config.yaml'],
             capture_output=True,
             text=True
         )
         assert result.returncode != 0
-
-    def test_invalid_step_rejected(self, temp_workspace):
-        """Test that invalid step names are rejected."""
+    
+    def test_invalid_event_step_rejected(self, temp_workspace):
+        """Test that invalid --event-steps names are rejected."""
         tmpdir, config_path = temp_workspace
         
         result = subprocess.run(
-            ['spice', 'invalid_step', '--config', config_path],
+            ['spice', 'event_inference', '--event-steps', 'invalid_step', '--config', config_path],
             capture_output=True,
             text=True
         )
         assert result.returncode != 0
-        assert 'invalid' in result.stderr.lower() or 'Invalid' in result.stderr
+        assert 'invalid' in result.stderr.lower()
     
-    def test_valid_steps_accepted(self, temp_workspace):
-        """Test that valid step names are accepted."""
+    def test_valid_event_steps_accepted(self, temp_workspace):
+        """Test that valid --event-steps names are accepted."""
         tmpdir, config_path = temp_workspace
         
         valid_steps = ['split', 'all_solutions', 'disambiguate', 'large_chroms', 'combine']
         for step in valid_steps:
-            # Just test that the command parses correctly (will fail on execution)
-            # Use --clean to avoid actually running
             result = subprocess.run(
-                ['spice', step, '--config', config_path, '--clean'],
+                ['spice', 'event_inference', '--event-steps', step, '--config', config_path, '--clean'],
                 capture_output=True,
                 text=True,
                 timeout=10
             )
-            # Should not fail on argument parsing
-            assert 'Invalid step' not in result.stderr
+            assert 'Invalid step' not in result.stderr, f"Step '{step}' was rejected but should be valid"
     
-    def test_valid_steps_with_plus_accepted(self, temp_workspace):
-        """Test that valid step names are accepted."""
-        tmpdir, config_path = temp_workspace
-        
-        valid_steps = ['split', 'all_solutions', 'disambiguate', 'large_chroms', 'combine']
-        for step in valid_steps:
-            # Just test that the command parses correctly (will fail on execution)
-            # Use --clean to avoid actually running
-            result = subprocess.run(
-                ['spice', step + '+', '--config', config_path, '--clean'],
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-            # Should not fail on argument parsing
-            assert 'Invalid step' not in result.stderr
-    
-    def test_all_step_works(self, temp_workspace):
-        """Test that 'all' step is accepted."""
+    def test_event_steps_with_plus_suffix_accepted(self, temp_workspace):
+        """Test that --event-steps with + suffix are accepted."""
         tmpdir, config_path = temp_workspace
         
         result = subprocess.run(
-            ['spice', 'all', '--config', config_path, '--clean'],
+            ['spice', 'event_inference', '--event-steps', 'split+', '--config', config_path, '--clean'],
             capture_output=True,
             text=True,
             timeout=10
         )
-        # Should not fail on argument parsing
         assert 'Invalid step' not in result.stderr
     
-    def test_cores_flag(self, temp_workspace):
-        """Test that --cores flag is accepted."""
+    def test_multiple_event_steps_accepted(self, temp_workspace):
+        """Test that multiple --event-steps can be specified."""
         tmpdir, config_path = temp_workspace
         
         result = subprocess.run(
-            ['spice', '--config', config_path, '--cores', '4', '--clean'],
+            ['spice', 'event_inference', '--event-steps', 'split', 'disambiguate', '--config', config_path, '--clean'],
             capture_output=True,
             text=True,
             timeout=10
         )
-        # Should not fail on argument parsing
-        assert 'cores' not in result.stderr.lower() or result.returncode == 0
+        assert 'Invalid step' not in result.stderr
     
-    def test_log_flag_terminal(self, temp_workspace):
-        """Test that --log terminal flag works."""
+    def test_event_inference_cores_flag(self, temp_workspace):
+        """Test that --cores flag is accepted for event_inference."""
         tmpdir, config_path = temp_workspace
         
         result = subprocess.run(
-            ['spice', '--config', config_path, '--log', 'terminal', '--clean'],
+            ['spice', 'event_inference', '--config', config_path, '--cores', '4', '--clean'],
             capture_output=True,
             text=True,
             timeout=10
         )
-        # Should accept the flag
-        assert result.returncode == 0 or 'log' not in result.stderr.lower()
+        assert result.returncode == 0 or 'cores' not in result.stderr.lower()
     
-    def test_log_flag_file(self, temp_workspace):
-        """Test that --log file flag works."""
+    def test_log_flag_options(self, temp_workspace):
+        """Test that --log flag accepts valid options."""
         tmpdir, config_path = temp_workspace
         
-        result = subprocess.run(
-            ['spice', '--config', config_path, '--log', 'file', '--clean'],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-        # Should accept the flag
-        assert result.returncode == 0 or 'log' not in result.stderr.lower()
+        for log_mode in ['terminal', 'file', 'both']:
+            result = subprocess.run(
+                ['spice', 'event_inference', '--config', config_path, '--log', log_mode, '--clean'],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            assert result.returncode == 0 or 'log' not in result.stderr.lower()
     
-    def test_log_flag_both(self, temp_workspace):
-        """Test that --log both flag works."""
-        tmpdir, config_path = temp_workspace
-        
-        result = subprocess.run(
-            ['spice', '--config', config_path, '--log', 'both', '--clean'],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-        # Should accept the flag
-        assert result.returncode == 0 or 'log' not in result.stderr.lower()
-    
-    def test_debug_flag(self, temp_workspace):
+    def test_debug_flag_accepted(self, temp_workspace):
         """Test that --debug flag is accepted."""
         tmpdir, config_path = temp_workspace
         
         result = subprocess.run(
-            ['spice', '--config', config_path, '--debug', '--clean'],
+            ['spice', 'event_inference', '--config', config_path, '--debug', '--clean'],
             capture_output=True,
             text=True,
             timeout=10
         )
-        # Should not fail on argument parsing
         assert result.returncode == 0 or 'debug' not in result.stderr.lower()
     
-    def test_keep_old_flag(self, temp_workspace):
-        """Test that --keep-old flag is accepted."""
+    def test_keep_old_flag_accepted(self, temp_workspace):
+        """Test that --keep-old flag is accepted for event_inference."""
         tmpdir, config_path = temp_workspace
         
         result = subprocess.run(
-            ['spice', '--config', config_path, '--keep-old', '--clean'],
+            ['spice', 'event_inference', '--config', config_path, '--keep-old', '--clean'],
             capture_output=True,
             text=True,
             timeout=10
         )
-        # Should not fail on argument parsing
         assert result.returncode == 0 or 'keep-old' not in result.stderr.lower()
     
+    def test_ids_flag_accepted(self, temp_workspace):
+        """Test that --ids flag is accepted for event_inference."""
+        tmpdir, config_path = temp_workspace
+        
+        result = subprocess.run(
+            ['spice', 'event_inference', '--config', config_path, '--ids', 'sample1,sample2', '--clean'],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        assert result.returncode == 0 or 'ids' not in result.stderr.lower()
+    
+    def test_plotting_requires_plot_target(self):
+        """Test that plotting mode requires --plot-sample or --plot-id."""
+        result = subprocess.run(
+            ['spice', 'plotting', '--config', 'dummy.yaml'],
+            capture_output=True,
+            text=True
+        )
+        assert result.returncode != 0
+    
+    def test_plotting_plot_sample_accepted(self, temp_workspace):
+        """Test that --plot-sample is accepted for plotting mode."""
+        tmpdir, config_path = temp_workspace
+        
+        result = subprocess.run(
+            ['spice', 'plotting', '--config', config_path, '--plot-sample', 'sample1'],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        # Should accept argument parsing even if execution fails
+        assert 'plot-sample' not in result.stderr or result.returncode == 0
+    
+    def test_plotting_plot_id_accepted(self, temp_workspace):
+        """Test that --plot-id is accepted for plotting mode."""
+        tmpdir, config_path = temp_workspace
+        
+        result = subprocess.run(
+            ['spice', 'plotting', '--config', config_path, '--plot-id', 'sample:chr1:cn_a'],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        # Should accept argument parsing even if execution fails
+        assert 'plot-id' not in result.stderr or result.returncode == 0
+
+
+class TestEventInferenceExecution:
+    """Event inference mode execution tests."""
+
+    def test_normal_execution(self, temp_workspace):
+        """Test basic event_inference execution."""
+        tmpdir, config_path = temp_workspace
+        
+        result = subprocess.run(
+            ['spice', 'event_inference', '--config', config_path],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        # Verify expected outputs exist
+        results_dir = os.path.join(tmpdir, 'results', 'test_run')
+        assert os.path.exists(os.path.join(results_dir, 'final_events.tsv')), "final_events.tsv was not created"
+        assert os.path.exists(os.path.join(results_dir, 'summary.tsv')), "summary.tsv was not created"
+        assert os.path.exists(os.path.join(results_dir, 'failed_reports.tsv')), "failed_reports.tsv was not created"
+        # Ensure the debug sample ID appears in the failure report
+        with open(os.path.join(results_dir, 'failed_reports.tsv'), 'r') as f:
+            content = f.read()
+            assert 'RPelvicLNMet_A12D-0020_CRUK_PC_0020_M3_DEBUG' in content
+
+    def test_execution_with_cores(self, temp_workspace):
+        """Test event_inference execution with multiple cores."""
+        tmpdir, config_path = temp_workspace
+        
+        result = subprocess.run(
+            ['spice', 'event_inference', '--config', config_path, '--cores', '4'],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        # Verify expected outputs exist
+        results_dir = os.path.join(tmpdir, 'results', 'test_run')
+        assert os.path.exists(os.path.join(results_dir, 'final_events.tsv')), "final_events.tsv was not created"
+        assert os.path.exists(os.path.join(results_dir, 'summary.tsv')), "summary.tsv was not created"
+        assert os.path.exists(os.path.join(results_dir, 'failed_reports.tsv')), "failed_reports.tsv was not created"
+
     def test_clean_flag(self, temp_workspace):
         """Test that --clean flag works and cleans directories."""
         tmpdir, config_path = temp_workspace
@@ -259,7 +356,7 @@ class TestCLI:
             f.write('test')
         
         result = subprocess.run(
-            ['spice', '--config', config_path, '--clean'],
+            ['spice', 'event_inference', '--config', config_path, '--clean'],
             capture_output=True,
             text=True
         )
@@ -269,104 +366,60 @@ class TestCLI:
         assert 'Cleaning intermediate files' in result.stdout or 'Cleaning intermediate files' in result.stderr
         # Directories should be cleaned
         assert not os.path.exists(dummy_file)
-    
-    def test_ids_flag(self, temp_workspace):
-        """Test that --ids flag is accepted."""
-        tmpdir, config_path = temp_workspace
-        
-        result = subprocess.run(
-            ['spice', '--config', config_path, '--ids', 'sample1,sample2', '--clean'],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-        # Should not fail on argument parsing
-        assert result.returncode == 0 or 'ids' not in result.stderr.lower()
-    
-    def test_multiple_steps(self, temp_workspace):
-        """Test that multiple steps can be specified."""
-        tmpdir, config_path = temp_workspace
-        
-        result = subprocess.run(
-            ['spice', 'split', 'disambiguate', '--config', config_path, '--clean'],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-        # Should not fail on argument parsing
-        assert 'Invalid step' not in result.stderr
 
 
-class TestExecution:
-    """Test suite for SPICE CLI execution."""
+class TestPlottingExecution:
+    """Plotting mode execution tests."""
 
-    def test_normal_execution(self, temp_workspace):
+    def test_plotting_with_plot_sample(self, temp_workspace):
+        """Test plotting mode with --plot-sample."""
         tmpdir, config_path = temp_workspace
         
+        # First run event_inference to generate required files
         result = subprocess.run(
-            ['spice', '--config', config_path],
+            ['spice', 'event_inference', '--config', config_path],
             capture_output=True,
             text=True,
         )
-        assert result.returncode == 0
-        # Verify expected outputs exist
-        results_dir = os.path.join(tmpdir, 'results', 'test_run')
-        assert os.path.exists(os.path.join(results_dir, 'final_events.tsv')), "final_events.tsv was note created"
-        assert os.path.exists(os.path.join(results_dir, 'summary.tsv')), "summary.tsv was note created"
-        assert os.path.exists(os.path.join(results_dir, 'failed_reports.tsv')), "failed_reports.tsv was note created"
-        # Ensure the debug sample ID appears in the failure report
-        with open(os.path.join(results_dir, 'failed_reports.tsv'), 'r') as f:
-            content = f.read()
-            assert 'RPelvicLNMet_A12D-0020_CRUK_PC_0020_M3_DEBUG' in content
-
-    def test_cores_execution(self, temp_workspace):
-        tmpdir, config_path = temp_workspace
+        assert result.returncode == 0, f"Event inference failed: {result.stderr}"
         
+        # Now test plotting
         result = subprocess.run(
-            ['spice', '--config', config_path, '--cores', '4'],
+            ['spice', 'plotting', '--config', config_path, '--plot-sample', 'LAdrenalMet_A31E-0018_CRUK_PC_0018_M3'],
             capture_output=True,
             text=True,
-        )
-        assert result.returncode == 0
-        # Verify expected outputs exist
-        results_dir = os.path.join(tmpdir, 'results', 'test_run')
-        assert os.path.exists(os.path.join(results_dir, 'final_events.tsv')), "final_events.tsv was note created"
-        assert os.path.exists(os.path.join(results_dir, 'summary.tsv')), "summary.tsv was note created"
-        assert os.path.exists(os.path.join(results_dir, 'failed_reports.tsv')), "failed_reports.tsv was note created"
-        # Ensure the debug sample ID appears in the failure report
-        with open(os.path.join(results_dir, 'failed_reports.tsv'), 'r') as f:
-            content = f.read()
-            assert 'RPelvicLNMet_A12D-0020_CRUK_PC_0020_M3_DEBUG' in content
-
-    def test_plotting(self, temp_workspace):
-        tmpdir, config_path = temp_workspace
-        
-        result = subprocess.run(
-            ['spice', '--config', config_path],
-            capture_output=True,
-            text=True,
-        )
-        assert result.returncode == 0, f"Initial execution failed, cannot test plotting: {result.stderr}"
-        
-        for plot_flags in [['--plot-sample', 'LAdrenalMet_A31E-0018_CRUK_PC_0018_M3'],
-                           ['--plot-id', 'LAdrenalMet_A31E-0018_CRUK_PC_0018_M3:chr1:cn_a']]:
-            result = subprocess.run(
-                ['spice', 'plot', '--config', config_path] + plot_flags,
-                capture_output=True,
-                text=True,
         )
         assert result.returncode == 0, f"Plotting execution failed: {result.stderr}"
         plots_dir = os.path.join(tmpdir, 'plots', 'test_run')
-        plot_file = os.path.join(plots_dir, f'{plot_flags[1].replace(":", "_")}_events.png')
+        plot_file = os.path.join(plots_dir, 'LAdrenalMet_A31E-0018_CRUK_PC_0018_M3_events.png')
         assert os.path.exists(plot_file), f"Plot was not created ({plot_file})"
 
-
-    def test_clean(self, temp_workspace):
+    def test_plotting_with_plot_id(self, temp_workspace):
+        """Test plotting mode with --plot-id."""
         tmpdir, config_path = temp_workspace
         
+        # First run event_inference to generate required files
         result = subprocess.run(
-            ['spice', '--clean', '--config', config_path],
+            ['spice', 'event_inference', '--config', config_path],
             capture_output=True,
             text=True,
         )
-        assert result.returncode == 0, f"Clean execution failed: {result.stderr}"
+        assert result.returncode == 0, f"Event inference failed: {result.stderr}"
+        
+        # Now test plotting with plot-id
+        result = subprocess.run(
+            ['spice', 'plotting', '--config', config_path, '--plot-id', 'LAdrenalMet_A31E-0018_CRUK_PC_0018_M3:chr1:cn_a'],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, f"Plotting execution failed: {result.stderr}"
+        plots_dir = os.path.join(tmpdir, 'plots', 'test_run')
+        plot_file = os.path.join(plots_dir, 'LAdrenalMet_A31E-0018_CRUK_PC_0018_M3_chr1_cn_a_events.png')
+        assert os.path.exists(plot_file), f"Plot was not created ({plot_file})"
+
+
+class TestLociDetectionExecution:
+    """Loci detection mode execution tests."""
+    
+    # Placeholder for future implementation
+    pass

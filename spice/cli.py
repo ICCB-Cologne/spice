@@ -8,143 +8,45 @@ import argparse
 # Import base package only; defer submodule imports until after config is loaded
 import spice
 
-def main():
-    """Main CLI entry point for SPICE."""
-    # Defer logger creation until after config is loaded
-    logger = None
 
-    parser = argparse.ArgumentParser(
-        description='SPICE: Selection Patterns In somatic Copy-number Events',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  spice --config <path/to/config>                               # Run all pipeline steps
-  spice --config <path/to/config> split                         # Run only input splitting
-  spice --config <path/to/config> all_solutions disambiguate    # Run path enumeration and kNN disambiguation
-  spice --config <path/to/config> --cores 8                     # Run with 8 cores
-  spice --config <path/to/config> plot --sample "sample_1"      # Run optional plotting for "sample_1"
-    """
-    )
-    parser.add_argument(
-        'steps',
-        nargs='*',
-        default=['all'],
-        help='Steps to run: preprocessing, split, all_solutions, disambiguate, large_chroms, combine, plot (default: all). Use a trailing + (e.g., split+) to run that step and all subsequent steps.'
-    )
-    parser.add_argument(
-        '--cores', '-j',
-        required=False, 
-        type=int, 
-        default=None, 
-        dest='cores',
-        help='Number of cores to use for parallel processing (default: 1)'
-    )
-    parser.add_argument(
-        '--config', '-c',
-        required=True,
-        type=str,
-        default=None,
-        dest='config_path',
-        help='Path to a YAML config file to merge over defaults'
-    )
-    parser.add_argument(
-        '--keep-old',
-        action='store_true',
-        help='Keep old intermediate files instead of overwriting them'
-    )
-    parser.add_argument(
-        '--total_cn',
-        action='store_true',
-        help='Clean intermediate files'
-    )
-    parser.add_argument(
-        '--clean',
-        action='store_true',
-        help='Clean intermediate files'
-    )
-    parser.add_argument(
-        '--ids',
-        type=str,
-        default=None
-    )
-    parser.add_argument(
-        '--log',
-        type=str,
-        choices=['terminal', 'file', 'both'],
-        default='terminal',
-        help='Logging output mode: terminal (console only), file (log file only), or both (default: terminal)'
-    )
-    parser.add_argument(
-        '--debug',
-        action='store_true',
-        help='Enable DEBUG logging globally, overriding config logging_level'
-    )
-    parser.add_argument(
-        '--skip-preprocessing',
-        action='store_true',
-        help='Skip the extra preprocessing step that normally runs before split'
-    )
-    # Preprocessing-specific arguments (optional)
-    parser.add_argument(
-        '--pre-unique-chroms',
-        dest='pre_unique_chroms',
-        action='store_true',
-        help='Preprocessing: keep only unique chromosomes'
-    )
-    parser.add_argument(
-        '--pre-skip-phasing',
-        dest='pre_skip_phasing',
-        action='store_true',
-        help='Preprocessing: skip MEDICC2 phasing'
-    )
-    parser.add_argument(
-        '--pre-skip-centromeres',
-        dest='pre_skip_centromeres',
-        action='store_true',
-        help='Preprocessing: skip centromere binning'
-    )
-    # Plot-specific arguments
-    parser.add_argument(
-        '--plot-sample',
-        dest='plot_sample',
-        type=str,
-        default=None,
-        help='Sample ID to plot (for step: plot)'
-    )
-    parser.add_argument(
-        '--plot-id',
-        dest='plot_id',
-        type=str,
-        default=None,
-        help='Chromosome allele ID to plot (format: sample:chr:cn_a|cn_b) (for step: plot)'
-    )
-    parser.add_argument(
-        '--plot-unit-size',
-        dest='plot_unit_size',
-        action='store_true',
-        help='Use unit_size for plotting events (applies to plot step)'
-    )
-    args = parser.parse_args()
-
+def main_event_inference(args):
+    """Run event inference pipeline."""
     # Handle 'all' or empty arguments, and expand trailing + syntax (e.g., split+)
     step_order = ['preprocessing', 'split', 'all_solutions', 'disambiguate', 'large_chroms', 'combine']
-    if args.steps == ['all'] or args.steps == []:
+    steps_input = getattr(args, 'event_steps', None)
+    
+    if steps_input is None or steps_input == ['all']:
         which = step_order.copy()
-    elif any('+' in x for x in args.steps):
-        assert len(args.steps) == 1, 'Only one step with + is allowed'
-        assert args.steps[0].endswith('+'), 'Only trailing + syntax is supported'
-        which = step_order[step_order.index(args.steps[0][:-1]):]
+    elif any('+' in x for x in steps_input):
+        assert len(steps_input) == 1, 'Only one step with + is allowed'
+        assert steps_input[0].endswith('+'), 'Only trailing + syntax is supported'
+        which = step_order[step_order.index(steps_input[0][:-1]):]
     else:
-        which = args.steps
+        which = steps_input
 
-    valid_steps = step_order + ['plot', 'all']
+    valid_steps = step_order + ['all']
     invalid_steps = [step for step in which if step not in valid_steps]
     if invalid_steps:
-        parser.error(f"Invalid step(s): {', '.join(invalid_steps)}. Valid steps are: preprocessing, split, all_solutions, disambiguate, large_chroms, combine, plot")
+        raise ValueError(f"Invalid step(s): {', '.join(invalid_steps)}. Valid steps are: preprocessing, split, all_solutions, disambiguate, large_chroms, combine")
 
     # Load configuration before importing submodules that may read it
     spice.load_config(args.config_path)
     from spice import config
+    
+    # Handle --clean early to avoid expensive imports
+    if args.clean:
+        import shutil
+        name = config.get('name', None)
+        if not name:
+            raise ValueError("Config file must specify a 'name' field.")
+        results_dir = os.path.join(config['directories']['results_dir'], name)
+        print(f'Cleaning intermediate files at {results_dir}')
+        for wgd in ['nowgd', 'wgd']:
+            shutil.rmtree(os.path.join(results_dir, wgd), ignore_errors=True)
+        print('Done cleaning.')
+        return
+    
+    # Now do the expensive imports
     from spice.data_loaders import load_final_events, resolve_data_file
     from spice.utils import timeout, FunctionTimeoutError
     from spice.logging import configure_logging, get_logger
@@ -187,16 +89,7 @@ Examples:
             os.makedirs(cur_dir)
 
     logger.info('Running SPICE: Selection Patterns In somatic Copy-number Events')
-    logger.info(f'Running for project name {name} with config file {args.config_path}')
-
-    if args.total_cn:
-        raise NotImplementedError('--total-cn is not implemented yet')
-
-    if args.clean:
-        logger.info(f'Cleaning intermediate files at {results_dir}')
-        for wgd in ['nowgd', 'wgd']:
-            shutil.rmtree(os.path.join(results_dir, wgd), ignore_errors=True)
-        return
+    logger.info(f'Running event inference for project name {name} with config file {args.config_path}')
 
     logger.info(f'Results will be stored in {results_dir}')
     logger.info(f'Running the following steps: {", ".join(which)}')
@@ -205,7 +98,28 @@ Examples:
     if selected_ids is not None:
         logger.info(f'Selecting only IDs: {selected_ids}')
 
-    total_cn = config['input_files'].get('total_cn', False)
+    # Check number of samples and warn if many
+    try:
+        import pandas as pd
+        copynumber_file = config['input_files']['copynumber']
+        df = pd.read_csv(copynumber_file, sep='\t', usecols=['sample_id'])
+        n_samples = df['sample_id'].nunique()
+        logger.info(f'Input copy-number file contains {n_samples} unique samples.')
+        if n_samples > 50:
+            logger.warning("=" * 80)
+            logger.warning("!!! WARNING !!!")
+            logger.warning("Large number of input samples detected (N={n_samples}).")
+            logger.warning("")
+            logger.warning("SPICE can be very slow when processing many samples in serial mode.")
+            logger.warning("For large datasets, we strongly recommend using the Snakemake workflow")
+            logger.warning("for parallel execution on a cluster.")
+            logger.warning("")
+            logger.warning("See README section 'Using with Snakemake' for more information:")
+            logger.warning("=" * 80)
+    except Exception as e:
+        logger.debug(f"Could not count samples from input file: {e}")
+
+    total_cn = config['params'].get('total_cn', False)
     if total_cn:
         raise NotImplementedError("total_cn=True is not yet supported in this version of SPICE")
 
@@ -222,7 +136,7 @@ Examples:
         logger.info('Starting extra preprocessing step (pre-split)')
         extra_preprocessing_main(
             unique_chroms=bool(args.pre_unique_chroms),
-            total_cn=args.total_cn,
+            total_cn=config['params'].get('total_cn', False),
             skip_phasing=bool(args.pre_skip_phasing),
             skip_centromeres=bool(args.pre_skip_centromeres),
         )
@@ -261,7 +175,7 @@ Examples:
                     chrom_file=os.path.join(results_dir, wgd_status, 'chrom_data_full', f'{cur_id}.pickle'),
                     sv_matching_threshold=config['params']['sv_matching_threshold'],
                     use_cache=config['params']['use_cache'],
-                    total_cn=total_cn,
+                    total_cn=config['params'].get('total_cn', False),
                     all_loh_solutions=config['params']['all_loh_solutions'],
                     save_output=True,
                     skip_loh_checks=True,
@@ -375,62 +289,279 @@ Examples:
             output_dir=results_dir
         )
 
-    # Optional plotting step
-    if 'plot' in which:
-        import pandas as pd
-        # Lazy import of plotting module to avoid heavy dependencies unless needed
-        from spice import plot as spice_plot
-        from matplotlib import pyplot as plt
-
-        logger.info('Starting plotting of inferred events')
-
-        # Validate plot target
-        if not ((args.plot_sample is not None) ^ (args.plot_id is not None)):
-            logger.error('Plot step requires exactly one of --plot-sample or --plot-id')
-            return
-
-        # Load required inputs
-        chrom_segments = pd.read_csv(
-            chrom_segments_file, sep='\t', index_col=['sample_id', 'chrom', 'allele']).sort_index()
-        final_events_df = load_final_events()
-
-        if args.plot_sample is not None:
-            cur_sample = args.plot_sample
-            logger.info(f'Plotting inferred events for sample: {cur_sample}')
-            fig, axs = spice_plot.plot_inferred_events_per_sample(
-                cur_sample,
-                chrom_segments,
-                final_events_df,
-                unit_size=args.plot_unit_size,
-            )
-            out_path = os.path.join(plots_base_dir, f'{cur_sample}_events{"_unit_size" if args.plot_unit_size else ""}.png')
-            fig.savefig(out_path, bbox_inches='tight')
-            logger.info(f'Saved plot to {out_path}')
-        else:
-            cur_id = args.plot_id
-            logger.info(f'Plotting inferred events for id: {cur_id}')
-            # Derive WIDTH_FULL from matplotlib defaults if not provided
-            WIDTH_FULL = plt.rcParams.get('figure.figsize', (15, 5))[0]
-            fig = spice_plot.plot_inferred_events_per_id(
-                cur_id,
-                chrom_segments,
-                final_events_df,
-                single_row=True,
-                show_legend=True,
-                figsize=(WIDTH_FULL, 1.25/5*WIDTH_FULL),
-                lw=3,
-                markersize=4
-            )
-            safe_id = cur_id.replace(':', '_')
-            out_path = os.path.join(plots_base_dir, f'{safe_id}_events.png')
-            fig.savefig(out_path, bbox_inches='tight')
-            logger.info(f'Saved plot to {out_path}')
-
     save_fail_reports(failed_reports, logger=logger)
-
     logger.info(f'Done. Results are in {results_dir}')
 
-    # ...existing code...
+
+def main_plotting(args):
+    """Run plotting mode."""
+    import pandas as pd
+    
+    # Load configuration
+    spice.load_config(args.config_path)
+    from spice import config
+    from spice.data_loaders import load_final_events, resolve_data_file
+    from spice.logging import configure_logging, get_logger
+    from spice import plot as spice_plot
+    from matplotlib import pyplot as plt
+
+    if 'name' not in config or not config['name']:
+        raise ValueError("Config file must specify a 'name' field.")
+    
+    # Create logger
+    log_level = 'DEBUG' if args.debug else config['params'].get('logging_level', 'INFO')
+    configure_logging(
+        log_mode=args.log,
+        log_dir=config['directories']['log_dir'],
+        config_name=config['name'],
+        level=log_level,
+    )
+    logger = get_logger('SPICE', spice_prefix=False)
+
+    name = config['name']
+    plots_base_dir = os.path.join(config['directories']['plot_dir'], name)
+    if not os.path.exists(plots_base_dir):
+        logger.info(f"Creating directory {plots_base_dir}")
+        os.makedirs(plots_base_dir)
+
+    logger.info('Running SPICE: Plotting Mode')
+    logger.info(f'Plotting for project name {name} with config file {args.config_path}')
+
+    # Validate plot target - this is now enforced by mutually_exclusive_group in argparse
+    # Load required inputs
+    chrom_segments_file = resolve_data_file()
+    chrom_segments = pd.read_csv(
+        chrom_segments_file, sep='\t', index_col=['sample_id', 'chrom', 'allele']).sort_index()
+    final_events_df = load_final_events()
+
+    if args.plot_sample is not None:
+        cur_sample = args.plot_sample
+        logger.info(f'Plotting inferred events for sample: {cur_sample}')
+        fig, axs = spice_plot.plot_inferred_events_per_sample(
+            cur_sample,
+            chrom_segments,
+            final_events_df,
+            unit_size=args.plot_unit_size,
+        )
+        out_path = os.path.join(plots_base_dir, f'{cur_sample}_events{"_unit_size" if args.plot_unit_size else ""}.png')
+        fig.savefig(out_path, bbox_inches='tight')
+        logger.info(f'Saved plot to {out_path}')
+    else:
+        cur_id = args.plot_id
+        logger.info(f'Plotting inferred events for id: {cur_id}')
+        # Derive WIDTH_FULL from matplotlib defaults if not provided
+        WIDTH_FULL = plt.rcParams.get('figure.figsize', (15, 5))[0]
+        fig = spice_plot.plot_inferred_events_per_id(
+            cur_id,
+            chrom_segments,
+            final_events_df,
+            single_row=True,
+            show_legend=True,
+            figsize=(WIDTH_FULL, 1.25/5*WIDTH_FULL),
+            lw=3,
+            markersize=4
+        )
+        safe_id = cur_id.replace(':', '_')
+        out_path = os.path.join(plots_base_dir, f'{safe_id}_events.png')
+        fig.savefig(out_path, bbox_inches='tight')
+        logger.info(f'Saved plot to {out_path}')
+
+    logger.info('Done plotting.')
+
+
+def main_loci_detection(args):
+    """Run loci detection mode (placeholder)."""
+    # Load configuration
+    spice.load_config(args.config_path)
+    from spice import config
+    from spice.logging import configure_logging, get_logger
+
+    if 'name' not in config or not config['name']:
+        raise ValueError("Config file must specify a 'name' field.")
+    
+    # Create logger
+    log_level = 'DEBUG' if args.debug else config['params'].get('logging_level', 'INFO')
+    configure_logging(
+        log_mode=args.log,
+        log_dir=config['directories']['log_dir'],
+        config_name=config['name'],
+        level=log_level,
+    )
+    logger = get_logger('SPICE', spice_prefix=False)
+
+    logger.info('Running SPICE: Loci Detection Mode')
+    logger.info(f'Project name: {config["name"]}')
+    
+    # Placeholder implementation
+    logger.warning('Loci detection is not yet implemented.')
+    logger.info('This mode will be used for detecting recurrent copy-number loci.')
+    
+    if hasattr(args, 'loci_steps') and args.loci_steps:
+        logger.info(f'Loci steps specified: {", ".join(args.loci_steps)}')
+    
+    logger.info('Placeholder complete.')
+
+
+def main():
+    """Main CLI entry point for SPICE."""
+    parser = argparse.ArgumentParser(
+        description='SPICE: Selection Patterns In somatic Copy-number Events',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Event inference (default mode)
+  spice event_inference --config <path/to/config>
+  spice event_inference --config <path/to/config> --event-steps split all_solutions
+  spice event_inference --config <path/to/config> --cores 8
+  spice event_inference --config <path/to/config> --clean
+  
+  # Plotting
+  spice plotting --config <path/to/config> --plot-sample "sample_1"
+  spice plotting --config <path/to/config> --plot-id "sample_1:chr1:cn_a"
+  
+  # Loci detection (not yet implemented)
+  spice loci_detection --config <path/to/config>
+        """
+    )
+    
+    # Create subparsers for different modes
+    subparsers = parser.add_subparsers(
+        dest='mode',
+        required=True,
+        help='SPICE mode to run'
+    )
+    
+    # Common arguments shared by all modes
+    common_parser = argparse.ArgumentParser(add_help=False)
+    common_parser.add_argument(
+        '--config', '-c',
+        required=True,
+        type=str,
+        dest='config_path',
+        help='Path to a YAML config file to merge over defaults'
+    )
+    common_parser.add_argument(
+        '--log',
+        type=str,
+        choices=['terminal', 'file', 'both'],
+        default='terminal',
+        help='Logging output mode: terminal (console only), file (log file only), or both (default: terminal)'
+    )
+    common_parser.add_argument(
+        '--debug',
+        action='store_true',
+        help='Enable DEBUG logging globally, overriding config logging_level'
+    )
+    
+    # ===== EVENT INFERENCE SUBPARSER =====
+    parser_event = subparsers.add_parser(
+        'event_inference',
+        parents=[common_parser],
+        help='Run event inference pipeline',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description='Infer discrete copy-number events from allele-specific profiles'
+    )
+    parser_event.add_argument(
+        '--event-steps',
+        nargs='+',
+        default=argparse.SUPPRESS,
+        help='Steps to run: preprocessing, split, all_solutions, disambiguate, large_chroms, combine (default: all). Use a trailing + (e.g., split+) to run that step and all subsequent steps.'
+    )
+    parser_event.add_argument(
+        '--cores', '-j',
+        type=int,
+        default=None,
+        help='Number of cores to use for parallel processing (default: 1)'
+    )
+    parser_event.add_argument(
+        '--keep-old',
+        action='store_true',
+        help='Keep old intermediate files instead of overwriting them'
+    )
+    parser_event.add_argument(
+        '--clean',
+        action='store_true',
+        help='Clean intermediate files and exit'
+    )
+    parser_event.add_argument(
+        '--ids',
+        type=str,
+        default=None,
+        help='Comma-separated list of sample IDs to process'
+    )
+    parser_event.add_argument(
+        '--skip-preprocessing',
+        action='store_true',
+        help='Skip the extra preprocessing step that normally runs before split'
+    )
+    parser_event.add_argument(
+        '--pre-unique-chroms',
+        dest='pre_unique_chroms',
+        action='store_true',
+        help='Preprocessing: keep only unique chromosomes'
+    )
+    parser_event.add_argument(
+        '--pre-skip-phasing',
+        dest='pre_skip_phasing',
+        action='store_true',
+        help='Preprocessing: skip MEDICC2 phasing'
+    )
+    parser_event.add_argument(
+        '--pre-skip-centromeres',
+        dest='pre_skip_centromeres',
+        action='store_true',
+        help='Preprocessing: skip centromere binning'
+    )
+    parser_event.set_defaults(func=main_event_inference)
+    
+    # ===== PLOTTING SUBPARSER =====
+    parser_plot = subparsers.add_parser(
+        'plotting',
+        parents=[common_parser],
+        help='Plot inferred events',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description='Generate visualizations of inferred copy-number events'
+    )
+    plot_group = parser_plot.add_mutually_exclusive_group(required=True)
+    plot_group.add_argument(
+        '--plot-sample',
+        dest='plot_sample',
+        type=str,
+        help='Sample ID to plot'
+    )
+    plot_group.add_argument(
+        '--plot-id',
+        dest='plot_id',
+        type=str,
+        help='Chromosome allele ID to plot (format: sample:chr:cn_a|cn_b)'
+    )
+    parser_plot.add_argument(
+        '--plot-unit-size',
+        dest='plot_unit_size',
+        action='store_true',
+        help='Use unit_size for plotting events'
+    )
+    parser_plot.set_defaults(func=main_plotting)
+    
+    # ===== LOCI DETECTION SUBPARSER =====
+    parser_loci = subparsers.add_parser(
+        'loci_detection',
+        parents=[common_parser],
+        help='Detect recurrent copy-number loci (not yet implemented)',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description='Identify recurrent copy-number events across samples'
+    )
+    parser_loci.add_argument(
+        '--loci-steps',
+        nargs='+',
+        default=argparse.SUPPRESS,
+        help='Steps to run for loci detection (placeholder for future implementation)'
+    )
+    parser_loci.set_defaults(func=main_loci_detection)
+    
+    # Parse arguments and call the appropriate function
+    args = parser.parse_args()
+    args.func(args)
 
 
 if __name__ == '__main__':

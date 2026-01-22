@@ -11,6 +11,8 @@ directories:
 params:
   # Logging
   logging_level: "INFO"
+  # Input data
+  total_cn: False # Set to True for total copy-number mode (not yet fully supported)
   # Preprocessing
   wgd_inference_method: 'major_cn' # can be 'major_cn' or 'ploidy_loh'
   # Top-level parameters

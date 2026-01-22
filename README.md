@@ -7,7 +7,6 @@
 
 ## Installation
 
-
 ### Prerequisites
 - Python >= 3.8
 - medicc2 (including openfst)
@@ -124,42 +123,39 @@ Effects
 
 ## Usage
 
-### Basic usage
+SPICE has three main modes:
+- **event_inference**: Infer discrete copy-number events from profiles
+- **loci_detection**: Detect recurrent copy-number loci across samples
+- **plotting**: Generate visualizations of inferred events and detected loci
+
+
+Example usage
 
 ```bash
-spice --config <path/to/config>
+spice event_inference --config configs/example_config.yaml
 ```
 
-For example
+**Note that spice automatically deletes previous runs of the same name when it is rerun.**
 
-```bash
-spice --config configs/example_config.yaml
-```
+### Event Inference
 
-
-Note that spice automatically deletes previous runs of the same name when it is rerun.
-
-### General logic
-
-spice runs 5 steps:
+The event inference pipeline runs 5 steps:
+- `preprocessing`: Extra preprocessing (filling telomeres, phasing, etc.)
 - `split`: Split haplotypes and preprocess input
 - `all_solutions`: Enumerate all valid evolutionary paths
 - `disambiguate`: Select best path using k-nearest neighbors
 - `large_chroms`: Use MCMC sampling for chromosomes with many events
 - `combine`: Combine all events into the final output
 
-Additionally, there is an optional `plot` step to generate figures. It is not part of `all` and must be run explicitly.
-
 For each step, nonWGD and WGD samples are treated separately and samples are split by chromosome and allele to give the file IDs "sample:chrom:allele". For each step, each ID is calculated separately and stored as separate files.
 
 Intermediate files can be removed using
-
 ```bash
-spice --clean --config <path/to/config>
+spice event_inference --clean --config <path/to/config>
 ```
 
 
-### Preprocessing Step Details
+#### Preprocessing Step Details
 
 The preprocessing step runs automatically (unless `--skip-preprocessing` is provided) and prepares the input for robust event inference. It performs:
 
@@ -176,50 +172,17 @@ Run control:
 - Use `--skip-preprocessing` to bypass this step and proceed directly to `split`.
 
 
-### Plotting
-
-```bash
-# Plot inferred events (optional)
-# Per sample
-spice plot --config <path/to/config> --plot-sample <SAMPLE_ID>
-spice plot --config <path/to/config> --plot-sample <SAMPLE_ID> --plot-unit-size
-
-# Per ID (format: sample:chr:cn_a|cn_b)
-spice plot --config <path/to/config> --plot-id <sample:chr:allele>
-```
-
-Notes for plotting:
-- The `plot` step requires `final_events.tsv` (produced by `combine`).
-- Output PNGs are saved to `plot_dir/{name}/` (see `directories.plot_dir` in config; defaults to `plots/`).
-- `--plot-unit-size` switches per-sample plots to unit-size segments.
-
-For interactive exploration, see `notebooks/plotting.ipynb`.
 
 
-### Run specific pipeline steps (Advanced)
+#### Parallel processing
 
-You can run individual steps or combinations by specifying them as arguments:
-
-```bash
-# Run only input splitting
-spice split --config <path/to/config>
-
-# Run path enumeration and kNN selection
-spice all_solutions disambiguate --config <path/to/config>
-
-# Run MCMC sampling for large chromosomes
-spice large_chroms --config <path/to/config>
-```
-
-### Parallel processing
-
-Use multiple cores:
+Use multiple cores for event inference:
 ```bash
 # Use 8 cores
-spice --cores 8
+spice event_inference --config <path/to/config> --cores 8
 ```
 While using multiple cores can technically make execution faster (especially in the case when spice takes a long time for single runs), it can also slow down execution when there are many entries to loop over.
-We usually recommend to only use multiple cores for the `large_chroms` pipeline step (see above) as it takes the longest per sample.
+We usually recommend to only use multiple cores for the `large_chroms` pipeline step as it takes the longest per sample.
 
 Note that parallel processing will disable logging for the different subprocesses.
 
@@ -232,6 +195,33 @@ Control where logging output is sent with the `--log` flag:
 * `--log both`: Writes logs to both terminal and file
 
 When using `--log file` or `--log both`, logs are saved to the configured log directory from the config with a filename pattern: `{name}_{timestamp}.log`
+
+### Dection of loci of selection
+
+Coming soon!
+
+
+### Plotting
+
+Plotting inferred events can be done on the sample or ID (sample, chromosome, allele) level.
+
+```bash
+# Plot inferred events per sample
+spice plotting --config <path/to/config> --plot-sample <SAMPLE_ID>
+spice plotting --config <path/to/config> --plot-sample <SAMPLE_ID> --plot-unit-size
+
+# Plot per ID (format: sample:chr:cn_a|cn_b)
+spice plotting --config <path/to/config> --plot-id <sample:chr:allele>
+```
+
+Notes for plotting:
+- Plotting requires `final_events.tsv` (produced by the `combine` step in event_inference).
+- Output PNGs are saved to `plot_dir/{name}/` (see `directories.plot_dir` in config; defaults to `plots/`).
+- `--plot-unit-size` switches per-sample plots to unit-size segments.
+- You must specify either `--plot-sample` or `--plot-id` (not both).
+
+For interactive exploration, see `notebooks/plotting.ipynb`.
+
 
 
 ## Input Format
@@ -246,7 +236,7 @@ Required columns:
 - `cn_a`: Copy number for allele A (haplotype-specific)
 - `cn_b`: Copy number for allele B (haplotype-specific only)
 
-Note that total copy-numbers are not yet supported.
+Total copy-number mode can be enabled by setting `params.total_cn: True` in the config file.
 
 ## Output
 
@@ -266,10 +256,37 @@ The intermediate files are saved with separate directories for WGD and non-WGD p
 Intermediate files can be removed using
 
 ```bash
-spice --clean --config <path/to/config>
+spice event_inference --clean --config <path/to/config>
 ```
 
 ## Advanced Usage
+
+### Run specific pipeline steps
+
+The SPICE event reconstruction has 5 sub-steps:
+- `split`: Split haplotypes and preprocess input
+- `all_solutions`: Enumerate all valid evolutionary paths
+- `disambiguate`: Select best path using k-nearest neighbors
+- `large_chroms`: Use MCMC sampling for chromosomes with many events
+- `combine`: Combine all events into the final output
+```
+
+To run specific steps, use the `--steps` flag:
+
+```bash
+# Run only input splitting
+spice split --config <path/to/config>
+
+# Run path enumeration and kNN selection
+spice all_solutions disambiguate --config <path/to/config>
+
+# Run MCMC sampling for large chromosomes
+spice large_chroms --config <path/to/config>
+
+# Run from a step onward (using + syntax)
+spice --config <path/to/config> --steps split+
+```
+
 
 ### Using with Snakemake
 
