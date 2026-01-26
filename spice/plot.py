@@ -1116,9 +1116,16 @@ def plot_gains_losses_over_chrom(
     return fig
 
 
-def plot_events_across_chromosome(cur_segmented_events, cur_chrom, which, ax=None, figsize=(20, 10), title=None,
+def plot_events_across_chromosome(cur_chrom, cur_segmented_events=None, final_events_df=None, which='both', ax=None, figsize=(20, 10), title=None,
                                   legend=True, legend_outside=True, xlabel=True, ylabel=True,
-                                  include_centromere_bound=True, split_left_right=True):
+                                  include_centromere_bound=False, split_left_right=False,
+                                  segmentation=100e3):
+
+    if cur_segmented_events is None and final_events_df is None:
+        raise ValueError("Either cur_segmented_events or final_events_df must be provided")
+
+    if cur_segmented_events is None:
+        cur_segmented_events = create_events_in_segmentation_full(final_events_df, segmentation=segmentation)
 
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
@@ -1127,17 +1134,10 @@ def plot_events_across_chromosome(cur_segmented_events, cur_chrom, which, ax=Non
     if which == 'both':
         which = 'gains and losses'
 
-    colors = {
-        'whole_chrom': "#254B64", #colors_(0),
-        'whole_arm': "#35A7FF", #colors_(1),
-        'telomere_bound': "#FFCB77", #colors_(2),
-        'telomere_bound_l': "#FFCB77", #colors_(2),
-        'telomere_bound_r': "#FFCB77", #colors_(2),
-        'centromere_bound': "#DB7971", #colors_(2),
-        'centromere_bound_l': "#DB7971", #colors_(2),
-        'centromere_bound_r': "#DB7971", #colors_(2),
-        'internal': "#84E296", #colors_(6),
-        }
+    colors = ls_colors
+    for lr in ['l', 'r']:
+        colors[f'telomere_bound_{lr}'] = colors['telomere_bound']
+        colors[f'centromere_bound_{lr}'] = colors['centromere_bound']
 
     tab20_cmap = plt.get_cmap('tab20')
     if include_centromere_bound:
@@ -1152,10 +1152,10 @@ def plot_events_across_chromosome(cur_segmented_events, cur_chrom, which, ax=Non
             columns = ['whole_chrom', 'whole_arm', 'telomere_bound_l', 'telomere_bound_r', 'internal']
         else:
             columns = ['whole_chrom', 'whole_arm', 'telomere_bound', 'internal']
-    if not split_left_right:
-        for gain_loss in ['gain', 'loss']:
-            cur_segmented_events[gain_loss]['telomere_bound'] = cur_segmented_events[gain_loss][['telomere_bound_l', 'telomere_bound_r']].sum(axis=1)
-            cur_segmented_events[gain_loss]['centromere_bound'] = cur_segmented_events[gain_loss][['centromere_bound_l', 'centromere_bound_r']].sum(axis=1)
+    # if not split_left_right:
+    #     for gain_loss in ['gain', 'loss']:
+    #         cur_segmented_events[gain_loss]['telomere_bound'] = cur_segmented_events[gain_loss][['telomere_bound_l', 'telomere_bound_r']].sum(axis=1)
+    #         cur_segmented_events[gain_loss]['centromere_bound'] = cur_segmented_events[gain_loss][['centromere_bound_l', 'centromere_bound_r']].sum(axis=1)
     colors = [colors[x] for x in columns]
 
     cur_gains = cur_segmented_events['gain'].loc[cur_chrom][columns] if 'gain' in which else None
@@ -1171,7 +1171,7 @@ def plot_events_across_chromosome(cur_segmented_events, cur_chrom, which, ax=Non
     ax.axhline(0, color='black', lw=3)
     ax.set_xlim(0, cur_segmented_events.loc[cur_chrom].index[-1][1])
     ax.axvspan(CENTROMERES.loc[cur_chrom, 'centro_start'], CENTROMERES.loc[cur_chrom, 'centro_end'],
-                color='grey', alpha=0.95)
+                color='grey', alpha=0.4)
     if xlabel:
         ax.set_xlabel('genome position', fontsize=20)
     if ylabel:
