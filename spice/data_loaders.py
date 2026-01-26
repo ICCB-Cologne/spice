@@ -158,8 +158,6 @@ def resolve_data_file(return_raw=False) -> str:
     """Resolve the chromosome segments file path.
     """
     from spice import config, directories
-    logger = get_logger('utils')
-
     name = config.get('name')
     data_dir = config['directories']['data_dir']
     orig = config['input_files']['copynumber']
@@ -190,7 +188,7 @@ def load_final_events():
 
 def load_segmentation(size=None, data_loaders_dir_top=DATA_LOADERS_DIR):
     # import here to avoid circular imports
-    from spice.segmentation import create_segmentation
+    from spice.event_analysis.segmentation import create_segmentation
     cur_filename = os.path.join(data_loaders_dir_top, 'segmentations', f'segmentation_{int(size)}.pickle')
     if not os.path.exists(cur_filename):
         logger.warning(f'File not found: {cur_filename} -> creating segmentation with size {size}')
