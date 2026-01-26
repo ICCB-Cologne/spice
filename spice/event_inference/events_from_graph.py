@@ -1308,9 +1308,11 @@ def create_events_df_from_single_path_solution(full_paths, cur_id, chrom_segment
                                                create_full=True, calc_telomere_bound=False):
     unique_events_df = pd.DataFrame(full_paths.events.values())
     final_events_df = unique_events_df.iloc[np.array(list(full_paths.solutions[0].elements()))].copy()
-    final_events_df['solved'] = full_paths.solved
     final_events_df['events_per_chrom'] = full_paths.n_events
     final_events_df['n_paths'] = int(full_paths.n_solutions)
+    final_events_df['solved'] = (
+        full_paths.solved if full_paths.solved is not None else 'unambiguous' if full_paths.n_solutions 
+        == 1 else '')
     final_events_df['id'] = cur_id
     final_events_df[['sample', 'chrom', 'allele']] = cur_id.split(':')
     if create_full:
