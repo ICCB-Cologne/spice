@@ -5,9 +5,21 @@ import os
 import sys
 import argparse
 import subprocess
+import re
 
 # Import base package only; defer submodule imports until after config is loaded
 import spice
+
+
+def get_version():
+    """Extract version from setup.py."""
+    setup_path = os.path.join(os.path.dirname(__file__), '..', 'setup.py')
+    with open(setup_path, 'r') as f:
+        content = f.read()
+    match = re.search(r"version\s*=\s*['\"]([^'\"]+)['\"]", content)
+    if match:
+        return match.group(1)
+    return 'unknown'
 
 
 def main_event_inference(args):
@@ -496,10 +508,19 @@ def main():
 
     parser = argparse.ArgumentParser(
         description='SPICE: Selection Patterns In somatic Copy-number Events',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    
+    # Add --version flag at the top level
+    parser.add_argument(
+        '--version',
+        action='version',
+        version=f'%(prog)s {get_version()}'
+    )
+    
+    parser.epilog = """
 Examples:
-  # Event inference (default mode)
+  # Event inference
   spice event_inference --config <path/to/config>
   spice event_inference --config <path/to/config> --event-steps split all_solutions
   spice event_inference --config <path/to/config> --cores 8
@@ -511,8 +532,7 @@ Examples:
   
   # Loci detection (not yet implemented)
   spice loci_detection --config <path/to/config>
-        """
-    )
+    """
     
     # Create subparsers for different modes
     subparsers = parser.add_subparsers(
