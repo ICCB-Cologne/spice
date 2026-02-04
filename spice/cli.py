@@ -257,6 +257,7 @@ def main_event_inference(args):
                     for x in os.listdir(os.path.join(str(results_dir), wgd_status, 'chrom_data_full'))]
             if selected_ids is not None:
                 cur_ids = [x for x in cur_ids if x in selected_ids]
+
             @timeout(config['params']['time_limit_all_solutions'], mode="auto")
             def run_full_paths(cur_id):
                 output_file = os.path.join(results_dir, wgd_status, 'full_paths_multiple_solutions', f'{cur_id}.pickle')
