@@ -46,9 +46,9 @@ def main_event_inference(args):
     if args.unlock:
         spice.set_config(args.config_path)
         repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-        snakefile = os.path.join(repo_root, 'Snakefile')
+        snakefile = os.path.join(repo_root, 'Snakefile_event_inference')
         if not os.path.exists(snakefile):
-            raise FileNotFoundError(f"Snakefile not found at {snakefile}")
+            raise FileNotFoundError(f"Snakefile_event_inference not found at {snakefile}")
 
         cmd = [
             'snakemake',
@@ -75,9 +75,9 @@ def main_event_inference(args):
     if args.snakemake:
         spice.set_config(args.config_path)
         repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-        snakefile = os.path.join(repo_root, 'Snakefile')
+        snakefile = os.path.join(repo_root, 'Snakefile_event_inference')
         if not os.path.exists(snakefile):
-            raise FileNotFoundError(f"Snakefile not found at {snakefile}")
+            raise FileNotFoundError(f"Snakefile_event_inference not found at {snakefile}")
 
         if args.skip_preprocessing:
             spice.load_config(args.config_path)
