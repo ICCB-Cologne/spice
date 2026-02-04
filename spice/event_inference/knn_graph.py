@@ -8,8 +8,9 @@ import pandas as pd
 from tqdm.auto import tqdm
 
 from spice import config, directories
+from spice.logging import log_debug
 from spice.utils import (
-    CALC_NEW, get_logger, open_pickle, save_pickle, create_full_df_from_diff_df, set_logging_level, log_debug)
+    CALC_NEW, get_logger, open_pickle, save_pickle, create_full_df_from_diff_df)
 from spice.data_loaders import load_chrom_lengths
 from spice.event_inference.events_from_graph import check_loh_for_full_paths
 
