@@ -108,19 +108,19 @@ def main_event_inference(args):
             '--verbose',
             '--configfile', args.config_path,
             '--config', f'config_path={args.config_path}',
-             '--keep-going'
+            '--keep-going'
         ]
         
         # Pass skip_preprocessing to snakemake if set
         if args.skip_preprocessing:
-            cmd.extend(['skip_preprocessing=True'])
+            cmd.extend(['--config', 'skip_preprocessing=True'])
         
         # add execution mode and number of jobs/cores
         if args.snakemake_mode == 'slurm':
             cmd.extend(['--slurm', '-j', str(args.snakemake_jobs)])
         else:
-            # Local mode: use --local-cores to ensure local execution and avoid cluster submission
-            cmd.extend(['--local-cores', str(args.snakemake_cores)])
+            # Local mode: explicitly disable profiles and cluster submission
+            cmd.extend(['--profile', '', '--local-cores', str(args.snakemake_cores)])
 
         env = os.environ.copy()
         env['SPICE_CONFIG'] = os.path.abspath(args.config_path)
@@ -469,7 +469,7 @@ def main_plotting(args):
 
 
 def main_loci_detection(args):
-    """Run loci detection mode (placeholder)."""
+    """Run loci detection mode (de-novo)."""
     # Load configuration
     spice.load_config(args.config_path)
     from spice import config
@@ -488,17 +488,39 @@ def main_loci_detection(args):
     )
     logger = get_logger('SPICE', spice_prefix=False)
 
-    logger.info('Running SPICE: Loci Detection Mode')
+    logger.info('Running SPICE: Loci Detection Mode (De-Novo)')
     logger.info(f'Project name: {config["name"]}')
     
-    # Placeholder implementation
-    logger.warning('Loci detection is not yet implemented.')
-    logger.info('This mode will be used for detecting recurrent copy-number loci.')
+    # Handle snakemake mode
+    if args.snakemake:
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        snakefile = os.path.join(repo_root, 'Snakefile_loci_detection')
+        if not os.path.exists(snakefile):
+            raise FileNotFoundError(f"Snakefile_loci_detection not found at {snakefile}")
+
+        cmd = [
+            'snakemake',
+            '-s', snakefile,
+            '--rerun-triggers', 'mtime',
+            '--verbose',
+            '--configfile', args.config_path,
+            '--config', f'config_path={args.config_path}',
+        ]
+        
+        # Add number of jobs/cores
+        if args.snakemake_mode == 'slurm':
+            cmd.extend(['--slurm', '-j', str(args.snakemake_jobs), '--keep-going'])
+        else:
+            cmd.extend(['-c', str(args.snakemake_cores)])
+
+        env = os.environ.copy()
+        env['SPICE_CONFIG'] = os.path.abspath(args.config_path)
+        logger.info(f'Running Snakemake loci detection workflow')
+        subprocess.run(cmd, check=True, env=env)
+        return
     
-    if hasattr(args, 'loci_steps') and args.loci_steps:
-        logger.info(f'Loci steps specified: {", ".join(args.loci_steps)}')
-    
-    logger.info('Placeholder complete.')
+    logger.warning('Non-Snakemake mode for loci detection is not yet implemented.')
+    logger.info('Please use --snakemake flag to run loci detection.')
 
 
 def main():
@@ -688,15 +710,32 @@ Examples:
     parser_loci = subparsers.add_parser(
         'loci_detection',
         parents=[common_parser],
-        help='Detect recurrent copy-number loci (not yet implemented)',
+        help='Detect recurrent copy-number loci (de-novo mode)',
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description='Identify recurrent copy-number events across samples'
+        description='Identify recurrent copy-number loci across chromosomes using de-novo detection'
     )
     parser_loci.add_argument(
-        '--loci-steps',
-        nargs='+',
-        default=argparse.SUPPRESS,
-        help='Steps to run for loci detection (placeholder for future implementation)'
+        '--snakemake',
+        action='store_true',
+        help='Run the loci detection workflow using Snakemake'
+    )
+    parser_loci.add_argument(
+        '--snakemake-mode',
+        choices=['local', 'slurm'],
+        default='local',
+        help='Snakemake execution mode: local or slurm (default: local)'
+    )
+    parser_loci.add_argument(
+        '--snakemake-jobs',
+        type=int,
+        default=250,
+        help='Number of jobs for Snakemake on Slurm (-j, default: 250)'
+    )
+    parser_loci.add_argument(
+        '--snakemake-cores',
+        type=int,
+        default=1,
+        help='Number of cores for local Snakemake execution (-c, default: 1)'
     )
     parser_loci.set_defaults(func=main_loci_detection)
     
