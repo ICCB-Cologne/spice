@@ -290,9 +290,14 @@ spice --config <path/to/config> --steps split+
 
 ### Using with Snakemake
 
-For cluster execution, use the provided Snakefile:
+The SPICE Snakemake workflow mirrors the full event inference pipeline.
+
 ```bash
-snakemake --rerun-triggers mtime --slurm -j250 --keep-going
+# Local execution
+spice --config <path/to/config> --snakemake --snakemake-mode local --snakemake-cores 1
+
+# Slurm execution
+spice --config <path/to/config> --snakemake --snakemake-mode slurm --snakemake-jobs 250
 ```
 
 ### Python API

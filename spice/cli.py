@@ -2,8 +2,9 @@
 """Command-line interface for SPICE."""
 
 import os
-import shutil
+import sys
 import argparse
+import subprocess
 
 # Import base package only; defer submodule imports until after config is loaded
 import spice
@@ -13,6 +14,7 @@ def main_event_inference(args):
     """Run event inference pipeline."""
     # Handle 'all' or empty arguments, and expand trailing + syntax (e.g., split+)
     step_order = ['preprocessing', 'split', 'all_solutions', 'disambiguate', 'large_chroms', 'combine']
+    valid_steps = step_order + ['all']
     steps_input = getattr(args, 'event_steps', None)
     
     if steps_input is None or steps_input == ['all']:
@@ -24,10 +26,92 @@ def main_event_inference(args):
     else:
         which = steps_input
 
-    valid_steps = step_order + ['all']
     invalid_steps = [step for step in which if step not in valid_steps]
     if invalid_steps:
         raise ValueError(f"Invalid step(s): {', '.join(invalid_steps)}. Valid steps are: preprocessing, split, all_solutions, disambiguate, large_chroms, combine")
+
+    # Handle unlock early to avoid expensive imports
+    if args.unlock:
+        spice.set_config(args.config_path)
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        snakefile = os.path.join(repo_root, 'Snakefile')
+        if not os.path.exists(snakefile):
+            raise FileNotFoundError(f"Snakefile not found at {snakefile}")
+
+        cmd = [
+            'snakemake',
+            '-s', snakefile,
+            '--configfile', args.config_path,
+            '--unlock'
+        ]
+
+        env = os.environ.copy()
+        env['SPICE_CONFIG'] = os.path.abspath(args.config_path)
+        
+        print(f"Unlocking Snakemake working directory with config: {args.config_path}")
+        result = subprocess.run(cmd, env=env)
+        
+        if result.returncode == 0:
+            print("Successfully unlocked Snakemake working directory.")
+        else:
+            print(f"Unlock failed with return code {result.returncode}")
+            sys.exit(result.returncode)
+        
+        return
+
+    # Handle snakemake mode early to avoid expensive imports
+    if args.snakemake:
+        spice.set_config(args.config_path)
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        snakefile = os.path.join(repo_root, 'Snakefile')
+        if not os.path.exists(snakefile):
+            raise FileNotFoundError(f"Snakefile not found at {snakefile}")
+
+        if args.skip_preprocessing:
+            spice.load_config(args.config_path)
+            from spice import config
+            import shutil
+
+            name = config.get('name')
+            if not name:
+                raise ValueError("Config file must specify a 'name' field.")
+            data_dir = config['directories']['data_dir']
+            src = config['input_files']['copynumber']
+            dst = os.path.join(data_dir, f"{name}_processed.tsv")
+            os.makedirs(data_dir, exist_ok=True)
+
+            if not os.path.isabs(src):
+                src = os.path.join(config['directories']['base_dir'], src)
+
+            if not os.path.exists(dst):
+                print(f"--skip-preprocessing set. Copying {src} -> {dst}")
+                shutil.copyfile(src, dst)
+            else:
+                print(f"--skip-preprocessing set. Using existing {dst}")
+
+        cmd = [
+            'snakemake',
+            '-s', snakefile,
+            '--rerun-triggers', 'mtime',
+            '--verbose',
+            '--configfile', args.config_path,
+            '--config', f'config_path={args.config_path}',
+        ]
+        
+        # Pass skip_preprocessing to snakemake if set
+        if args.skip_preprocessing:
+            cmd.extend(['skip_preprocessing=True'])
+        
+        # add number of jobs
+        if args.snakemake_mode == 'slurm':
+            cmd.extend(['--slurm', '-j', str(args.snakemake_jobs), '--keep-going'])
+        else:
+            cmd.extend(['-c', str(args.snakemake_cores)])
+
+        env = os.environ.copy()
+        env['SPICE_CONFIG'] = os.path.abspath(args.config_path)
+        subprocess.run(cmd, check=True, env=env)
+        return
 
     # Load configuration before importing submodules that may read it
     spice.load_config(args.config_path)
@@ -404,6 +488,12 @@ def main_loci_detection(args):
 
 def main():
     """Main CLI entry point for SPICE."""
+    # Allow `spice --config <path> --snakemake` (default to event_inference mode)
+    if '--snakemake' in sys.argv and not any(
+        mode in sys.argv for mode in ['event_inference', 'plotting', 'loci_detection']
+    ):
+        sys.argv.insert(1, 'event_inference')
+
     parser = argparse.ArgumentParser(
         description='SPICE: Selection Patterns In somatic Copy-number Events',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -511,6 +601,34 @@ Examples:
         dest='pre_skip_centromeres',
         action='store_true',
         help='Preprocessing: skip centromere binning'
+    )
+    parser_event.add_argument(
+        '--snakemake',
+        action='store_true',
+        help='Run the event inference workflow using Snakemake instead of the Python runner'
+    )
+    parser_event.add_argument(
+        '--snakemake-mode',
+        choices=['local', 'slurm'],
+        default='local',
+        help='Snakemake execution mode: local or slurm (default: local)'
+    )
+    parser_event.add_argument(
+        '--snakemake-jobs',
+        type=int,
+        default=250,
+        help='Number of jobs for Snakemake on Slurm (-j, default: 250)'
+    )
+    parser_event.add_argument(
+        '--snakemake-cores',
+        type=int,
+        default=1,
+        help='Number of cores for local Snakemake execution (-c, default: 1)'
+    )
+    parser_event.add_argument(
+        '--unlock',
+        action='store_true',
+        help='Unlock the Snakemake working directory and exit'
     )
     parser_event.set_defaults(func=main_event_inference)
     
