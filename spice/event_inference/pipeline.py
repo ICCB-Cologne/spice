@@ -55,8 +55,8 @@ def full_paths_from_graph_with_sv_wrapper(
         skip_loh_checks=False, use_cache=True, save_output=True):
     
     # Implemente here to debug the creation of the fail report
-    if cur_id == "RPelvicLNMet_A12D-0020_CRUK_PC_0020_M3_DEBUG:chr1:cn_a":
-        raise ValueError("Debug ID")
+    # if cur_id == "RPelvicLNMet_A12D-0020_CRUK_PC_0020_M3_DEBUG:chr1:cn_a":
+    #     raise ValueError("Debug ID")
     
     log_debug(logger, f"Full path solving for {cur_id} ({'WGD' if is_wgd else 'noWGD'})")
     chrom_id = chrom_id_from_id(cur_id)
