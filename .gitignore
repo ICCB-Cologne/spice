@@ -28,3 +28,4 @@ plots/*
 
 # Specific files
 notebooks/debug.ipynb
+OLD_Snakefile
