@@ -120,7 +120,7 @@ def main_event_inference(args):
             cmd.extend(['--slurm', '-j', str(args.snakemake_jobs)])
         else:
             # Local mode: explicitly disable profiles and cluster submission
-            cmd.extend(['--profile', '', '--local-cores', str(args.snakemake_cores)])
+            cmd.extend(['--profile', '', '--cores', str(args.snakemake_cores)])
 
         env = os.environ.copy()
         env['SPICE_CONFIG'] = os.path.abspath(args.config_path)
