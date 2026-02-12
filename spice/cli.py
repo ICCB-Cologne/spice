@@ -766,10 +766,13 @@ def main_loci_assignment(args):
 def main():
     """Main CLI entry point for SPICE."""
     # Allow `spice --config <path> --snakemake` (default to event_inference mode)
+    if '--snakemake':
+        raise NotImplementedError("Snakemake usage is coming soon!")
     if '--snakemake' in sys.argv and not any(
         mode in sys.argv for mode in ['event_inference', 'plotting', 'loci_detection']
     ):
-        sys.argv.insert(1, 'event_inference')
+        raise ValueError("When using --snakemake, you must also specify a mode: event_inference, plotting, or loci_detection.")
+        
 
     parser = argparse.ArgumentParser(
         description='SPICE: Selection Patterns In somatic Copy-number Events',
