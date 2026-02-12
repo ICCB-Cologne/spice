@@ -382,7 +382,7 @@ If you use SPICE in your research, please cite: [TODO]
 
 ## 9. License
 
-[TODO]
+GNU GENERAL PUBLIC LICENSE
 
 ## 10. Contact
 
