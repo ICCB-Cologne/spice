@@ -5,7 +5,6 @@ Processes chromosomes in parallel to detect recurrent copy-number loci.
 
 import os
 import sys
-from pathlib import Path
 
 # Load config from environment variable
 config_path = os.environ.get('SPICE_CONFIG', 'config.yaml')

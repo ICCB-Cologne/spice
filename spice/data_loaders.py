@@ -1,6 +1,5 @@
 import os
 import re
-from pathlib import Path
 from io import StringIO
 import sys
 
