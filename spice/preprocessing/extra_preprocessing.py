@@ -14,11 +14,6 @@ import medicc
 import fstlib
 from medicc.core import create_standard_fsa_dict_from_data
 
-try:
-    from cns.utils.conversions import breaks_to_segments
-except ModuleNotFoundError as e:
-    raise ModuleNotFoundError('You need to install CNSistent using "pip install CNSistent" to use the pre-processing')
-
 from spice import config, directories, data_loaders
 from spice.logging import log_debug, get_logger
 from spice.preprocessing.preprocessing import (
@@ -324,7 +319,7 @@ def main(
                 continue
 
             breaks = get_breaks_mod(pd.concat([cur_data, centromeres_df.query('chrom == @cur_chrom')]))
-            segments = breaks_to_segments(breaks)
+            segments = cnsistent_breaks_to_segments(breaks)
             cur_data_with_centro = main_aggregate_quiet(cur_data, segments, cn_columns=cn_columns, how="mean", print_info=False)
             cur_data_with_centro = cur_data_with_centro.drop(columns='name')
             centromere_index = cur_data_with_centro.loc[cur_data_with_centro['start'] == centromeres.loc[cur_chrom, 'centro_start']].index[0]
@@ -484,3 +479,13 @@ def main(
     log_debug(logger, 'Done.')
 
     return data, data_stacked
+
+
+def cnsistent_breaks_to_segments(breakpoints):
+    '''Copied from CNSistent v0.9.0'''
+    segs = {}
+    for chrom, breaks in breakpoints.items():
+        segs[chrom] = []
+        for i in range(len(breaks) - 1):
+            segs[chrom].append((breaks[i], breaks[i + 1], f"{chrom}_{i}"))
+    return segs

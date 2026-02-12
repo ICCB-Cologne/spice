@@ -40,17 +40,7 @@ pip install -e .
 
 This will install SPICE and all its dependencies, and make the `spice` command available in your shell.
 
-### 0.4 Dependencies
-
-SPICE automatically installs the following dependencies:
-- numpy
-- scipy
-- pandas
-- pyyaml
-- joblib
-- ortools (version 9.8.3296)
-
-### 0.5 Optional Dependencies
+### 0.4 Optional Dependencies
 
 To use SPICE with Snakemake for parallel execution on computing clusters, install snakemake separately:
 ```bash

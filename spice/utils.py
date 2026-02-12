@@ -16,7 +16,7 @@ import numpy as np
 from spice.logging import get_logger, log_debug
 
 def chrom_id_from_id(cur_id):
-    return re.sub(':cn_[ab](:\d+$)?', '', cur_id)
+    return re.sub(r':cn_[ab](:\d+$)?', '', cur_id)
 
 
 def get_sister_allele(cur_id):

@@ -13,21 +13,21 @@ setup(
         ],
     },
     install_requires=[
-        'numpy==1.26.4',
-        'pandas==2.2.3',
+        # 'numpy==1.26.4',
+        # 'pandas==2.2.3',
+        'numpy',
+        'pandas',
         'scipy',
         'seaborn',
         'tqdm',
         'fire',
-        'CNSistent',
         'pyyaml',
         'joblib',
         'ortools==9.8.3296',
-        # needs to be installed using conda
-        # 'openfst-python==1.8.2', 
     ],
     extras_require={
         'snakemake': ['snakemake>=7.0'],
+        'preprocessing': ['CNSistent'],
     },
     python_requires='>=3.8',
 )
