@@ -2,8 +2,8 @@ from setuptools import setup, find_packages
 from pathlib import Path
 
 setup(
-    name='spice-test',
-    version='0.1.8',
+    name='scna-spice',
+    version='0.1.0',
     author='Tom L Kaufmann',
     description='SPICE: Selection Patterns In somatic Copy-number Events',
     author_email='tkau93@gmail.com, marina.55kovic@gmail.com, roland.f.schwarz@gmail.com',
@@ -26,7 +26,7 @@ setup(
         'numpy',
         'pandas',
         'scipy',
-        'seaborn',
+        'seaborn>=0.12',
         'tqdm',
         'fire',
         'pyyaml',
