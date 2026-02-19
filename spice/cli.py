@@ -24,7 +24,7 @@ def get_version():
 
     if version is not None:
         try:
-            return version('spice-test')
+            return version('scna-spice')
         except Exception:
             pass
 
