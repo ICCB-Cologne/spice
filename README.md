@@ -316,8 +316,8 @@ Coming soon!
 ### 5.2 Expected Input
 
 Loci assignment requires:
-- **Reference loci**: `objects/reference_loci_position.tsv` reference loci set created on TCGA data
 - **Event inference results**: `final_events.tsv` produced by the event_inference pipeline
+- **Reference loci**: defaults to `spice/reference_loci/all_460_loci.tsv`, the reference loci set created on TCGA data
 
 ### 5.3 Expected Output
 

@@ -12,7 +12,8 @@ setup(
     url='https://bitbucket.org/schwarzlab/spice',
     packages=find_packages(),
     package_data={
-        'spice': ['objects/**/*.yaml', 'objects/**/*.tsv', 'objects/**/*.pickle'],
+        'spice': ['objects/**/*.yaml', 'objects/**/*.tsv', 'objects/**/*.pickle',
+                  'reference_loci/**/*.tsv'],
     },
     zip_safe=False,
     entry_points={

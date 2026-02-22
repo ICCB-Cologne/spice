@@ -1043,8 +1043,8 @@ def loci_assignment(
                 "importlib.resources unavailable for reference_loci file"
             )
         try:
-            resource_name = os.path.basename(reference_loci_file or 'reference_loci_position.tsv')
-            content = files('spice').joinpath('objects', resource_name).read_text()
+            resource_name = os.path.basename(reference_loci_file or 'all_460_loci.tsv')
+            content = files('spice').joinpath('reference_loci', resource_name).read_text()
             logger.info('Loading loci positions from package resources')
             reference_loci_df = pd.read_csv(StringIO(content), sep='\t')
         except (TypeError, ImportError, AttributeError, FileNotFoundError) as exc:
