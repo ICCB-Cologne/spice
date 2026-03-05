@@ -83,15 +83,29 @@ def load_segmentation(size=None, data_loaders_dir_top=DATA_LOADERS_DIR):
 
 
 def load_raw_copy_number_data(input_file, alleles=['cn_a', 'cn_b']):
-    data = pd.read_csv(input_file, sep='\t', dtype={allele: 'int64' for allele in alleles})
+    data = pd.read_csv(input_file, sep='\t')
     data = (data
             .infer_objects()
-            .rename({'chr': 'chrom', 'sample': 'sample_id', 'major_cn': 'cn_a', 'minor_cn': 'cn_b'}, axis=1)
-            [['sample_id', 'chrom', 'start', 'end', 'cn_a', 'cn_b']]
-            # .set_index(['sample_id', 'chrom', 'start', 'end'])
-            )
+            .rename(
+                {
+                    'chr': 'chrom',
+                    'sample': 'sample_id',
+                    'major_cn': 'cn_a',
+                    'minor_cn': 'cn_b',
+                    'cn': 'total_cn',
+                    'total': 'total_cn',
+                },
+                axis=1,
+            ))
 
+    required_cols = ['sample_id', 'chrom', 'start', 'end'] + list(alleles)
+    missing_cols = [col for col in required_cols if col not in data.columns]
+    if len(missing_cols) > 0:
+        raise ValueError(f'Missing required columns in input file {input_file}: {missing_cols}')
+
+    data = data[required_cols]
     for allele in alleles:
+        data[allele] = data[allele].astype('int64')
         data.loc[data[allele] > 8, allele] = 8
 
     data['chrom'] = format_chromosomes(data['chrom'])

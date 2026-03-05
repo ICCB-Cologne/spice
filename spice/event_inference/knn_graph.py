@@ -1,5 +1,5 @@
-import re
-import os
+import sys
+import pickle
 import itertools
 from collections import namedtuple
 
@@ -13,6 +13,15 @@ from spice.utils import (
     CALC_NEW, get_logger, open_pickle, save_pickle, create_full_df_from_diff_df)
 from spice.data_loaders import load_chrom_lengths
 from spice.event_inference.events_from_graph import check_loh_for_full_paths
+
+# Use importlib.resources for accessing package data (works with installed packages)
+if sys.version_info >= (3, 9):
+    from importlib.resources import files
+else:
+    try:
+        from importlib_resources import files
+    except ImportError:
+        files = None
 
 logger = get_logger('spice.knn_graph', load_config=True)
 
@@ -264,3 +273,17 @@ def solve_with_knn(full_paths, cur_chrom_segments, knn_train_data, k=250, wgd_sp
         save_pickle((unique_events_df, events_per_path, path_distances), save_all_scores)
     
     return final_events_df
+
+
+def load_knn_train():
+    if files is None:
+        raise FileNotFoundError("importlib.resources unavailable for knn_train data")
+    try:
+        knn_train_file = files('spice').joinpath('objects', 'train_events_sv_and_unamb.pickle').read_bytes()
+        knn_train = pickle.loads(knn_train_file)
+        
+    except (TypeError, ImportError, AttributeError, FileNotFoundError) as exc:
+        raise FileNotFoundError("Could not find knn_train data in spice/objects/") from exc
+    assert isinstance(knn_train, dict), 'knn_train data should be a dictionary'
+
+    return knn_train

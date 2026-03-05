@@ -13,7 +13,7 @@ from spice.utils import (
 from spice.logging import get_logger, log_debug
 from spice.event_inference.events_from_graph import (
     full_paths_from_graph_with_sv, create_events_df_from_single_path_solution)
-from spice.event_inference.knn_graph import solve_with_knn
+from spice.event_inference.knn_graph import solve_with_knn, load_knn_train
 from spice.event_inference.mcmc_for_large_chroms import mcmc_event_selection, create_best_events_df_from_mcmc
 from spice.event_inference.data_structures import ChromData
 from spice.pipeline_postprocessing import calc_summary_from_events_df
@@ -80,15 +80,13 @@ def full_paths_from_graph_with_sv_wrapper(
         raise ValueError(f'No events (n = {len(full_paths.events)}) or no solutions (n = {len(full_paths.solutions)}) found')
 
     if full_paths.solved in ['sv', 'unamb']:
-        full_paths_dir = 'full_paths_without_sv_single_solution' if without_sv_output_dir else 'full_paths_single_solution'
+        output_file = output_file.replace('full_paths_multiple_solutions', 'full_paths_single_solution')
         log_debug(logger, f"Full path is completely solved with {full_paths.solved}")
         assert len(full_paths.solutions) == 1, f"solved_chrom.solutions: {full_paths.solutions}"
         output = create_events_df_from_single_path_solution(
             full_paths, cur_id, chrom_segments=chrom_segments, create_full=True, calc_telomere_bound=False)
     else:
-        full_paths_dir = 'full_paths_without_sv_multiple_solutions' if without_sv_output_dir else 'full_paths_multiple_solutions'
         output = full_paths
-
 
     if save_output:
         assert output_file is not None, "output_file must be provided if save_output is True"
@@ -189,12 +187,8 @@ def solve_with_knn_wrapper(cur_id, chrom_segments_file, full_paths_multiple_solu
     if len(full_paths.events) == 0:
         raise ValueError('full_paths does not have any events')
 
-    if knn_train_data is None:
-        knn_train_data = open_pickle(config['input_files']['knn_train'], fail_if_nonexisting=True)
-    elif not isinstance(knn_train_data, dict):
-        log_debug(logger, f'Loading knn_train_data from {knn_train_data}')
-        knn_train_data = open_pickle(knn_train_data, fail_if_nonexisting=True)
-        assert isinstance(knn_train_data, dict)
+    knn_train_data = load_knn_train()
+
     final_events_df = solve_with_knn(
         full_paths,
         k=k,
@@ -233,12 +227,7 @@ def solve_with_mcmc_wrapper(
     if n_iterations is None:
         n_iterations = int(chrom_data.n_events * n_iteration_scale)
 
-    if knn_train_data is None:
-        knn_train_data =open_pickle(config['input_files']['knn_train'], fail_if_nonexisting=True)
-    elif not isinstance(knn_train_data, dict):
-        log_debug(logger, f'Loading knn_train_data from {knn_train_data}')
-        knn_train_data = open_pickle(knn_train_data, fail_if_nonexisting=True)
-        assert isinstance(knn_train_data, dict)
+    knn_train_data = load_knn_train()
 
     if sv_data_file is None or sv_data_file == '' or isinstance(sv_data_file, bool):
         cur_sv_data = None
@@ -323,7 +312,7 @@ def solve_with_mcmc_wrapper(
     return final_events_df
 
 def combine_final_events(solved_dirs, chrom_segments_file=None, sv_data=None,
-                         sv_matching_threshold=10, knn_train_data=None, knn_k=250, output_dir=None):
+                         sv_matching_threshold=10, output_dir=None):
 
     if isinstance(solved_dirs, str):
         solved_dirs = solved_dirs.split(' ')
@@ -350,7 +339,7 @@ def combine_final_events(solved_dirs, chrom_segments_file=None, sv_data=None,
     log_debug(logger, f'Found {len(solved_events)} solved IDs')
 
     if len(solved_events) == 0:
-        raise ValueError('No solved events found in the provided directories')
+        raise ValueError(f'No solved events found in the provided directories: {solved_dirs}')
     final_events_df = pd.DataFrame(np.concatenate(solved_events, axis=0), columns=EVENT_DF_COLUMNS)
     log_debug(logger, f'Found a total of {len(final_events_df)} events in the final df')
 

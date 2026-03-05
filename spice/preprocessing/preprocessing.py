@@ -177,6 +177,8 @@ def infer_wgd_status(data, results_dir=None, plot=False, method='major_cn', tota
     _data[['major_cn', 'minor_cn']] = np.sort(_data[['cn_a', 'cn_b']].values, axis=1)[:, ::-1]
     _data['width'] = _data['end'] - _data['start']
     if method == 'major_cn':
+        if total_cn:
+            raise ValueError('Method "major_cn" is not compatible with total_cn=True, since it relies on major_cn and minor_cn columns. Please set total_cn=False or choose a different method.')
         _data['major_cn_above_equal_2_weighted'] = _data.eval('(major_cn >= 2) * width')
         _data['major_minus_minor_cn'] = _data['major_cn'] - _data['minor_cn']
         _data['major_minus_minor_cn_weighted'] = _data['major_minus_minor_cn'] * _data['width']

@@ -118,13 +118,25 @@ def _run_batch(cur_ids, cores, desc, func, logger):
     """Run a batch of tasks either serially or in parallel."""
     n_jobs = cores if (cores is not None and cores > 1) else 1
     logger.info(f"{desc}: running on {n_jobs} core(s) for {len(cur_ids)} items")
+
+    def _format_exception(e: Exception) -> str:
+        etype = type(e).__name__
+        msg = str(e)
+        tb = e.__traceback__
+        if tb is None:
+            return f"{etype}: {msg}"
+        while tb.tb_next is not None:
+            tb = tb.tb_next
+        frame = tb.tb_frame
+        return f"{etype}: {msg} (at {os.path.basename(frame.f_code.co_filename)}:{tb.tb_lineno})"
+
     if n_jobs == 1:
         def _safe_func(cid):
             try:
                 return func(cid)
             except Exception as e:
                 logger.error(f"{desc}: failed for id '{cid}'", exc_info=False)
-                return {"id": cid, "status": "failed", "error": str(e), "step": desc}
+                return {"id": cid, "status": "failed", "error": _format_exception(e), "step": desc}
         results = []
         for i, cid in enumerate(cur_ids):
             logger.info(f'{desc}: {i+1} / {len(cur_ids)} ({100*i/len(cur_ids):.1f}%) - {cid}')
@@ -142,7 +154,7 @@ def _run_batch(cur_ids, cores, desc, func, logger):
                 result = func(cid)
             except Exception as e:
                 logger.error(f"{desc}: failed for id '{cid}'", exc_info=False)
-                result = {"id": cid, "status": "failed", "error": str(e), "step": desc}
+                result = {"id": cid, "status": "failed", "error": _format_exception(e), "step": desc}
             with lock:
                 progress['count'] += 1
                 pbar.update(1)

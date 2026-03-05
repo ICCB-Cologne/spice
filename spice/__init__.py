@@ -114,11 +114,6 @@ def load_config(config_path: Optional[str] = None, assert_exists: bool = True):
                 directories[dkey] = str((base_dir_path / dval).resolve())
         config['directories'] = directories
 
-        if 'input_files' in config and 'knn_train' in config['input_files']:
-            knn_path = config['input_files']['knn_train']
-            if knn_path and not os.path.isabs(knn_path):
-                abs_knn_path = str((base_dir_path / knn_path).resolve())
-                config['input_files']['knn_train'] = abs_knn_path
     return config
 
 # Perform an initial load so library usage without CLI still works as before

@@ -156,7 +156,17 @@ SPICE expects tab-separated input files with copy-number segments. See example f
 
 Total copy-number mode can be enabled by setting `params.total_cn: True` in the config file.
 
-#### 3.2.1 WGD Detection
+#### 3.2.1 Total copy-number mode (`params.total_cn`)
+
+Set `params.total_cn: True` to run event inference on single-channel total copy-number input.
+
+**Required column changes in this mode:**
+- Use `total_cn` instead of `cn_a`/`cn_b` in the input TSV
+- Keep the same segment metadata columns: `sample`, `chrom`, `start`, `end`
+
+Note that in the output the total copy-number will be displayed as allele `cn_a`
+
+#### 3.2.2 WGD Detection
 
 SPICE supports two ways to determine WGD (whole genome duplication) status per sample. The pipeline branches on WGD status and uses different FSTs and neutral CN values accordingly.
 
@@ -180,7 +190,7 @@ Notes
 - WGD status impacts neutral CN values and constraint solving throughout the pipeline, so ensure this is set or inferred correctly.
 - For haplotype-specific data, neutral CN is 1 (noWGD) vs 2 (WGD); for total CN, 2 vs 4 respectively.
 
-#### 3.2.2 Sex (XY/XX) Detection
+#### 3.2.3 Sex (XY/XX) Detection
 
 SPICE supports resolving sample sex (XY vs XX) either via a provided file or automatic inference. This affects handling of `chrX` and `chrY` in preprocessing and splitting.
 

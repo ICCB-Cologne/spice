@@ -34,8 +34,11 @@ def format_input(data, total_cn=False):
 
     # Cap copynumber at 8 and filter small segments
     if total_cn:
-        log_debug(logger, f'Capping copy numbers at max value 8: {data.eval("total_cn > 8").sum()} entries are affected')
-        data.loc[data['total_cn'] > 8, 'total_cn'] = 8
+        n_capped = int((data['cn_a'] > 8).sum())
+        log_debug(logger, f'Capping copy numbers at max value 8: {n_capped} entries are affected')
+        data.loc[data['cn_a'] > 8, 'cn_a'] = 8
+        if 'total_cn' in data.columns:
+            data['total_cn'] = data['cn_a']
     else:
         log_debug(logger, f'Capping copy numbers at max value 8: {data.eval("cn_a > 8").sum()} entries are affected')
         data.loc[data['cn_a'] > 8, 'cn_a'] = 8
@@ -67,14 +70,20 @@ def _prepare_split_inputs(name, keep_old=False, selected_ids=None):
     if not os.path.exists(results_events_dir):
         os.makedirs(results_events_dir)
 
-    total_cn = config['input_files'].get('total_cn', False)
+    total_cn = config['params'].get('total_cn', False)
 
     copynumber_file = resolve_copynumber_file(return_raw=True)
     diploid_fsas = {b: get_diploid_fsa(total_copy_numbers=b) for b in [False, True]}
 
     log_debug(logger, f"Loading from input file: {copynumber_file}")
-    data = load_raw_copy_number_data(copynumber_file)
-    data = data[['sample_id', 'chrom', 'start', 'end', 'cn_a', 'cn_b']]
+    if total_cn:
+        data = load_raw_copy_number_data(copynumber_file, alleles=['total_cn'])
+        data = data[['sample_id', 'chrom', 'start', 'end', 'total_cn']].copy()
+        data['cn_a'] = data['total_cn']
+        data['cn_b'] = 0
+    else:
+        data = load_raw_copy_number_data(copynumber_file)
+        data = data[['sample_id', 'chrom', 'start', 'end', 'cn_a', 'cn_b']]
     if data['sample_id'].str.contains(':').any():
         raise ValueError('Sample IDs in input file cannot contain ":" character.')
     log_debug(logger, f'Found {data["sample_id"].nunique()} samples in input file.')
@@ -84,7 +93,7 @@ def _prepare_split_inputs(name, keep_old=False, selected_ids=None):
 
     wgd_status = get_or_infer_wgd_status( data=data, total_cn=total_cn, )
 
-    data = format_input(data)
+    data = format_input(data, total_cn=total_cn)
 
     log_debug(logger, 'Merging neighbouring segments with same copy-numbers')
     data = merge_neighbours_mod(
@@ -110,16 +119,20 @@ def _prepare_split_inputs(name, keep_old=False, selected_ids=None):
     data.to_csv(copynumber_file.replace('.tsv', '_split.tsv'), sep='\t', index=False)
 
     # Load lookup tables from package resources
-    if files is None:
-        raise FileNotFoundError("importlib.resources unavailable for lookup tables")
-    try:
-        single_content = files('spice').joinpath('objects', 'lookup_table_single_solution_full_paths.pickle').read_bytes()
-        lookup_table_single_solution = pickle.loads(single_content)
-        
-        multiple_content = files('spice').joinpath('objects', 'lookup_table_multiple_solutions_full_paths.pickle').read_bytes()
-        lookup_table_multiple_solutions = pickle.loads(multiple_content)
-    except (TypeError, ImportError, AttributeError, FileNotFoundError) as exc:
-        raise FileNotFoundError("Could not find lookup tables in spice/objects/") from exc
+    if total_cn:
+        lookup_table_single_solution = dict()
+        lookup_table_multiple_solutions = dict()
+    else:
+        if files is None:
+            raise FileNotFoundError("importlib.resources unavailable for lookup tables")
+        try:
+            single_content = files('spice').joinpath('objects', 'lookup_table_single_solution_full_paths.pickle').read_bytes()
+            lookup_table_single_solution = pickle.loads(single_content)
+            
+            multiple_content = files('spice').joinpath('objects', 'lookup_table_multiple_solutions_full_paths.pickle').read_bytes()
+            lookup_table_multiple_solutions = pickle.loads(multiple_content)
+        except (TypeError, ImportError, AttributeError, FileNotFoundError) as exc:
+            raise FileNotFoundError("Could not find lookup tables in spice/objects/") from exc
 
     if not keep_old:
         log_debug(logger, 'Deleting old files')

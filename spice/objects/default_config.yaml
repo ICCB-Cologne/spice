@@ -8,7 +8,7 @@ params:
   # Logging
   logging_level: "INFO"
   # Input data
-  total_cn: False # Set to True for total copy-number mode (not yet fully supported)
+  total_cn: False # Set to True for total copy-number mode
   # Preprocessing
   wgd_inference_method: 'major_cn' # can be 'major_cn' or 'ploidy_loh'
   # Top-level parameters
@@ -22,7 +22,6 @@ params:
   sv_size_filter: 1000
   sv_matching_threshold: 10
   sv_filter_dup_del: True
-  knn_train_dataset: 'sv_unamb' # can be sv, unamb, sv_unamb or unamb_sv. Is overruled by knn_train path above
   knn_k: 250
   all_loh_solutions: False
   timing_solution_threshold: 0.316 # 1/10**(1/2)

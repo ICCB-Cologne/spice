@@ -139,7 +139,7 @@ def main_event_inference(args):
     # Load configuration before importing submodules that may read it
     spice.load_config(args.config_path)
     from spice import config
-    
+
     # Handle --clean early to avoid expensive imports
     if args.clean:
         import shutil
@@ -228,8 +228,7 @@ def main_event_inference(args):
         logger.debug(f"Could not count samples from input file: {e}")
 
     total_cn = config['params'].get('total_cn', False)
-    if total_cn:
-        raise NotImplementedError("total_cn=True is not yet supported in this version of SPICE")
+    logger.info(f'Copy-number mode: {"total_cn" if total_cn else "haplotype-specific"}')
 
     # Clean old files
     if not args.keep_old and args.ids is None:
@@ -244,7 +243,7 @@ def main_event_inference(args):
         logger.info('Starting extra preprocessing step (pre-split)')
         extra_preprocessing_main(
             unique_chroms=bool(args.pre_unique_chroms),
-            total_cn=config['params'].get('total_cn', False),
+            total_cn=total_cn,
             skip_phasing=bool(args.pre_skip_phasing),
             skip_centromeres=bool(args.pre_skip_centromeres),
         )
@@ -284,7 +283,7 @@ def main_event_inference(args):
                     chrom_file=os.path.join(results_events_dir, wgd_status, 'chrom_data_full', f'{cur_id}.pickle'),
                     sv_matching_threshold=config['params']['sv_matching_threshold'],
                     use_cache=config['params']['use_cache'],
-                    total_cn=config['params'].get('total_cn', False),
+                    total_cn=total_cn,
                     all_loh_solutions=config['params']['all_loh_solutions'],
                     output_file=output_file,
                     save_output=True,
@@ -394,8 +393,6 @@ def main_event_inference(args):
             chrom_segments_file=chrom_segments_file,
             sv_data=config['input_files'].get('sv', None),
             sv_matching_threshold=config['params']['sv_matching_threshold'],
-            knn_train_data=None,
-            knn_k=config['params']['knn_k'],
             output_dir=results_dir
         )
 

@@ -43,7 +43,7 @@ def main(
     """
     name = config['name']
 
-    cn_columns = ['total_cn'] if total_cn else ['cn_a', 'cn_b']
+    cn_columns = ['cn_a'] if total_cn else ['cn_a', 'cn_b']
     cn_columns_phased = ['cn_a'] if total_cn else ['cn_a', 'cn_b']
     diploid_fsa = get_diploid_fsa(total_copy_numbers=total_cn)
 
@@ -51,9 +51,16 @@ def main(
     log_debug(logger, f'Saving processed data to {directories["data_dir"]}')
 
     chrom_lens_df = data_loaders.load_chrom_lengths()
-
-    data = data_loaders.load_raw_copy_number_data(config['input_files']['copynumber'])[['sample_id', 'chrom', 'start', 'end', 'cn_a', 'cn_b']]
-
+    copynumber_file = config['input_files']['copynumber']
+    if total_cn:
+        data = data_loaders.load_raw_copy_number_data(copynumber_file, alleles=['total_cn'])
+        data = data[['sample_id', 'chrom', 'start', 'end', 'total_cn']].copy()
+        data['cn_a'] = data['total_cn']
+        data['cn_b'] = 0
+        data = data.drop(columns='total_cn')
+    else:
+        data = data_loaders.load_raw_copy_number_data(copynumber_file)
+        data = data[['sample_id', 'chrom', 'start', 'end', 'cn_a', 'cn_b']]
     # assert data.index.get_level_values('sample_id').nunique() == len(drews_whitelist), (data.index.get_level_values('sample_id').nunique(), len(drews_whitelist))
     data.loc[data['start'] == 1, 'start'] = 0 # change such that start begins at 0
     data[['start', 'end']] = data[['start', 'end']].astype(int)
@@ -78,17 +85,14 @@ def main(
         data.loc[cur_index, 'cn_b'] = 0
 
     # Cap copynumber at 8 and filter small segments
-    if total_cn:
-        log_debug(logger, f'Capping copy numbers at max value 8: {data.eval("total_cn > 8").sum()} entries are affected')
-        data.loc[data['total_cn'] > 8, 'total_cn'] = 8
-    else:
-        log_debug(logger, f'Capping copy numbers at max value 8: {data.eval("cn_a > 8").sum()} entries are affected')
-        data.loc[data['cn_a'] > 8, 'cn_a'] = 8
+    log_debug(logger, f'Capping copy numbers at max value 8: {data.eval("cn_a > 8").sum()} entries are affected')
+    data.loc[data['cn_a'] > 8, 'cn_a'] = 8
+    if not total_cn:
         data.loc[data['cn_b'] > 8, 'cn_b'] = 8
 
     log_debug(logger, f'Removing small segments (1kb): {data.eval(("(end-start) < 1e3")).sum()} entries are affected')
     data = data.query('(end-start) > 1e3').copy().reset_index(drop=True)
-    total_cn_sum = data['total_cn'].sum() if total_cn else data[['cn_a', 'cn_b']].sum().sum()
+    total_cn_sum = data['cn_a'].sum() if total_cn else data[['cn_a', 'cn_b']].sum().sum()
 
     # set end to chrom length if it is larger
     data = data.join(chrom_lens_df, on='chrom')
@@ -138,8 +142,8 @@ def main(
         non_diploid_chroms = (data
         .set_index(['sample_id', 'chrom'])
         .join(neutral_value, on='sample_id')
-        .query('not total_cn.isna()')
-        .eval('total_cn != neutral_value', engine='python')
+        .query('not cn_a.isna()')
+        .eval('cn_a != neutral_value', engine='python')
         .groupby(['sample_id', 'chrom'])
         .any()
         )
@@ -466,6 +470,9 @@ def main(
     data_stacked = merge_neighbours_mod(
         data_stacked, cn_columns=['cn'], start_end_must_overlap=False)
     data_stacked['sample_id'] = data_stacked['sample_id'].str.replace('_cn_a', '').str.replace('_cn_b', '')
+
+    if total_cn:
+        data['total_cn'] = data['cn_a'].copy()
 
     # Save final
     log_debug(logger, f'Save final to dir {directories["data_dir"]}')
