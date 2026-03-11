@@ -10,8 +10,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from spice import config
-from spice.event_inference.SV import (overlap_svs_with_events_df, overlap_svs_with_events_df_single,
-                              load_pcawg_sv_data)
 from spice.utils import (
     open_pickle, save_pickle, chrom_id_from_id, CALC_NEW, create_full_df_from_diff_df,
     calc_telomere_bound_whole_arm_whole_chrom)

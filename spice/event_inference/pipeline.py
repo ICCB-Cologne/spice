@@ -7,6 +7,7 @@ import numpy as np
 import fire
 
 from spice import config
+from spice.data_loaders import load_sv_data
 from spice.utils import (
     save_pickle, open_pickle, chrom_id_from_id,
     calc_telomere_bound_whole_arm_whole_chrom)
@@ -50,24 +51,16 @@ EVENT_DF_DTYPES = {
 
 def full_paths_from_graph_with_sv_wrapper(
         cur_id, is_wgd, sv_data_file, chrom_segments_file, chrom_file,
-        sv_matching_threshold=10, without_sv_output_dir=False,
-        all_loh_solutions=True, total_cn=False, output_file=None,
+        sv_matching_threshold=10, all_loh_solutions=True, total_cn=False, output_file=None,
         skip_loh_checks=False, use_cache=True, save_output=True):
     
     # Implemente here to debug the creation of the fail report
-    # if cur_id == "RPelvicLNMet_A12D-0020_CRUK_PC_0020_M3_DEBUG:chr1:cn_a":
+    # if cur_id == "sample_DEBUG:chr1:cn_a":
     #     raise ValueError("Debug ID")
     
     log_debug(logger, f"Full path solving for {cur_id} ({'WGD' if is_wgd else 'noWGD'})")
     chrom_id = chrom_id_from_id(cur_id)
-    if sv_data_file is None or sv_data_file == '' or isinstance(sv_data_file, bool):
-        cur_sv_data = None
-        log_debug(logger, 'No SV data provided, so skipping SV overlap')
-    else:
-        log_debug(logger, f'Loading SV data from {sv_data_file}')
-        sv_data = open_pickle(sv_data_file)
-        assert isinstance(sv_data, pd.DataFrame)
-        cur_sv_data = sv_data.query('chrom_id == @chrom_id')
+    cur_sv_data = load_sv_data(sv_data_file=sv_data_file, chrom_id=chrom_id)
     chrom_segments = pd.read_csv(chrom_segments_file, sep='\t', index_col=['sample_id', 'chrom', 'allele'])
     chrom = open_pickle(chrom_file)
 
@@ -229,15 +222,8 @@ def solve_with_mcmc_wrapper(
 
     knn_train_data = load_knn_train()
 
-    if sv_data_file is None or sv_data_file == '' or isinstance(sv_data_file, bool):
-        cur_sv_data = None
-        log_debug(logger, 'No SV data provided, so skipping SV overlap')
-    else:
-        log_debug(logger, f'Loading SV data from {sv_data_file}')
-        chrom_id = chrom_id_from_id(cur_id)
-        sv_data = open_pickle(sv_data_file, fail_if_nonexisting=True)
-        assert isinstance(sv_data, pd.DataFrame)
-        cur_sv_data = sv_data.query('chrom_id == @chrom_id')
+    chrom_id = chrom_id_from_id(cur_id)
+    cur_sv_data = load_sv_data(sv_data_file=sv_data_file, chrom_id=chrom_id)
    
     mcmc_result = mcmc_event_selection(
                         cur_id=cur_id,

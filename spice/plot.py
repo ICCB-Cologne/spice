@@ -13,6 +13,7 @@ from scipy.stats import linregress, t
 from spice import config, data_loaders
 from spice.utils import chrom_id_from_id, get_logger, get_diffs_from_events_df, linkage_order
 from spice.event_inference.events_from_graph import raw_events_from_FullPaths
+from spice.segmentation import create_events_in_segmentation_full
 from spice.event_inference.mcmc_for_large_chroms import _get_events_from_diff
 from spice.event_inference.data_structures import FullPaths
 from spice.length_scales import DEFAULT_SEGMENT_SIZE_DICT, LS_I_DICT, LS_I_DICT_REV
@@ -147,41 +148,24 @@ def plot_inferred_events_per_id(
     if len(chrom_segments.index.names) == 1:
         cur_chrom_segments = cur_chrom_segments.reset_index(drop=True).set_index(['sample_id', 'chrom', 'allele'])
     cur_segments_timing = None
+    segments_overlap = None   
     if show_timing:
-        cur_timing_df = get_timing_and_chrom_segments(
-            cur_id,
-            timed_segments,
-            maj_min_phased=maj_min_phased,
-            include_A_phased_separate=include_A_phased_separate,
-            include_AB_phased_as_majmin=include_AB_phased_as_majmin)
-
-        cur_segments_timing, sample_timing = filter_timing_data(
-            cur_id,
-            timing_posterior,
-            maj_min_phased=maj_min_phased,
-            include_A_phased_separate=include_A_phased_separate,
-            include_AB_phased_as_majmin=include_AB_phased_as_majmin)
-
-        segments_overlap = get_all_overlaps(
-            cur_timing_df[["Segment_Start", "Segment_End"]].values,
-            cur_chrom_segments.values,
-            norm_by="A")
-        if maj_min_phased and show_timing:
-            segments_overlap = segments_overlap[cur_timing_df.index.isin(cur_segments_timing)]
-    else:
-        segments_overlap = None   
+        raise NotImplementedError('timing data is currently not supported for plotting')
 
     if show_svs:
         chrom_id = chrom_id_from_id(cur_id)
+        if 'chrom_id' not in sv_data.columns:
+            sv_data['chrom_id'] = sv_data.apply(lambda row: chrom_id_from_id(row['sample_id'] + ':' + row['chrom']), axis=1)
         cur_sv_data = sv_data.query('chrom_id == @chrom_id')
-        sv_start_matches = (np.abs(cur_sv_data['start1'].values - cur_chrom_segments['start'].values[:, None]) < sv_matching_threshold)
-        sv_end_matches = (np.abs(cur_sv_data['end2'].values - cur_chrom_segments['end'].values[:, None]) < sv_matching_threshold)
+        sv_start_matches = (np.abs(cur_sv_data['start'].values - cur_chrom_segments['start'].values[:, None]) < sv_matching_threshold)
+        sv_end_matches = (np.abs(cur_sv_data['end'].values - cur_chrom_segments['end'].values[:, None]) < sv_matching_threshold)
         selected_svs = np.logical_and(sv_start_matches.any(axis=0), sv_end_matches.any(axis=0))
         sv_start_matches = np.where(sv_start_matches[:, selected_svs])
         sv_start_matches = sv_start_matches[0][np.argsort(sv_start_matches[1])]
         sv_end_matches = np.where(sv_end_matches[:, selected_svs])
         sv_end_matches = sv_end_matches[0][np.argsort(sv_end_matches[1])]
-        sv_overlaps = (sv_start_matches, sv_end_matches)
+        sv_types = cur_sv_data.loc[selected_svs, 'svclass'].values
+        sv_overlaps = (sv_start_matches, sv_end_matches, sv_types)
     else:
         sv_overlaps = None
 
@@ -244,17 +228,9 @@ def plot_inferred_events_per_id(
         axs_data[1].set_title("Copy-number segments")
 
         if show_timing:
-            segment_names = [f"seg_{i}" for i in np.argmax(segments_overlap, axis=1)]
-            plot_timing(
-                sample_timing,
-                segment_names=segment_names,
-                ax=axs_data[2],
-                show_legend=False,
-                phase_gain_col="Phase-Gain_Index",
-                include_AB_phased_as_majmin=include_AB_phased_as_majmin)
-            axs_data[2].set_title("timing")
+            raise NotImplementedError('timing data is currently not supported for plotting')
         if show_overlap:
-            plot_segment_overlap(segments_overlap, which='sv' if show_svs else 'timing', ax=axs_data[2 + int(show_timing)])
+            raise NotImplementedError('show_overlap is currently not supported for plotting')
 
     ## Plot second row (solutions)
     if show_solutions:
@@ -329,7 +305,7 @@ def plot_cur_sv(cur_id, dat, sv_data, events_df, ax=None, figsize=(20, 3.5), all
 
     ax = plot_cur_dat(cur_dat, ax=ax, allele=allele)
     for i, (_, sv) in enumerate(cur_sv_data.iterrows()):
-        ax.axvspan(sv['start1'], sv['end2'], color=f'C{i}', alpha=0.5, label=f"SV {i} ({sv['svclass']})")
+        ax.axvspan(sv['start'], sv['end'], color=f'C{i}', alpha=0.5, label=f"SV {i} ({sv['svclass']})")
     if show_legend:
         ax.legend(bbox_to_anchor=(1, 1))
 
@@ -568,7 +544,9 @@ def plot_cur_dat(
         ax.axvspan(CENTROMERES.loc[cur_chrom, 'centro_start'], CENTROMERES.loc[cur_chrom, 'centro_end'], alpha=0.25, color='grey')
     if sv_overlaps is not None:
         ylim = ax.get_ylim()[1] + 0.5
-        for i, (start, end) in enumerate(zip(*sv_overlaps)):
+        sv_starts = sv_overlaps[0]
+        sv_ends = sv_overlaps[1]
+        for i, (start, end) in enumerate(zip(sv_starts, sv_ends)):
             ax.plot([xs[start], xs[end+1]], [ylim+0.05*i, ylim+0.05*i], 'o-', color=f'C{i}', lw=lw,
                     markersize=markersize)
 
@@ -576,198 +554,6 @@ def plot_cur_dat(
     ax.set_yticklabels(np.arange(0, ax.get_yticks().max() + 1, 1).astype(int))
     ax.set_ylabel("Copy-number")
     ax.set_xlim(0, xs[-1])
-
-    return ax
-
-
-def plot_timing(
-    sample_timing,
-    ax=None,
-    show_legend=True,
-    node_id_col="segment_node_ID",
-    phase_gain_col="Phase-Gain_Index",
-    plot_wgd=True,
-    segment_names=None,
-    include_AB_phased_as_majmin=False
-):
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(8, 8))
-
-    sample_timing = sample_timing.copy()
-    # sample_timing['segment_node_ID'] = sample_timing['Segment_ID'].values + ':' + sample_timing['Gain_Index'].astype(str)
-    segment_node_ids = sample_timing[node_id_col].unique()
-    segment_node_ids = np.array(segment_node_ids)[
-        np.argsort([int(x.split("-")[1]) for x in segment_node_ids])
-    ]
-    segment_ids = np.unique([x.split(":")[0] for x in segment_node_ids])
-    segment_ids = np.array(segment_ids)[
-        np.argsort([int(x.split("-")[1]) for x in segment_ids])
-    ]
-
-    for x in np.cumsum(
-        sample_timing.groupby("Segment_ID")[phase_gain_col]
-        .nunique()
-        .loc[segment_ids]
-        .values
-    )[:-1]:
-        ax.axvline(x - 0.5, color="k", linestyle="--", alpha=0.5)
-
-    ax.set_xlabel("timed gain")
-    ax.set_ylabel("relative timing")
-
-    if len(sample_timing) == 0:
-        return segment_ids
-    sns.boxplot(
-        data=sample_timing,
-        x=node_id_col,
-        y="Gain_Timing",
-        hue="Segment_ID",
-        order=segment_node_ids,
-        hue_order=segment_ids,
-        ax=ax,
-        dodge=False,
-        width=0.6,
-    )
-    if len(segment_node_ids) >= 2:
-        sns.stripplot(
-            data=sample_timing,
-            x=node_id_col,
-            y="Gain_Timing",
-            color="black",
-            order=segment_node_ids,
-            ax=ax,
-        )
-    ax.set_ylim(0, 1)
-
-    if segment_names is None:
-        segment_names = [f"seg_{i}" for i in range(len(segment_ids))]
-    segment_names = np.repeat(
-        segment_names,
-        sample_timing.groupby("Segment_ID")[phase_gain_col]
-        .nunique()
-        .loc[segment_ids]
-        .values,
-    )
-
-    if include_AB_phased_as_majmin:
-        segment_node_ids = [x.replace('A', 'Major').replace('B', 'Minor') for x in segment_node_ids]
-
-    ax.set_xticklabels(
-        [
-            seg
-            + "\n"
-            + ":".join(x.split(":")[1:]).replace("Major", "maj").replace("Minor", "min")
-            for seg, x in zip(segment_names, segment_node_ids)
-        ],
-        rotation=0,
-        ha="center",
-        fontsize=12,
-    )
-
-    if plot_wgd and not sample_timing["WGD_Timing"].isna().any():
-        ax.axhline(
-            sample_timing["WGD_Timing"].values[0], color="k", linestyle="--", alpha=0.5
-        )
-    if not show_legend:
-        ax.legend().set_visible(False)
-
-    return segment_ids
-
-
-def filter_timing_data(
-    cur_id,
-    timing_posterior,
-    maj_min_phased=False,
-    include_A_phased_separate=False,
-    include_AB_phased_as_majmin=False,
-):
-    if include_A_phased_separate and include_AB_phased_as_majmin:
-        raise ValueError(
-            "include_A_phased_separate and include_AB_phased_as_majmin cannot both be True"
-        )
-
-    cur_sample, cur_chrom_str, cur_chrom_int, cur_allele = split_id(cur_id)
-
-    if maj_min_phased:
-        phasing = ["Major"] if cur_allele == "cn_a" else ["Minor"]
-    else:
-        phasing = None
-    if include_A_phased_separate:
-        phasing += ["A"]
-    if include_AB_phased_as_majmin:
-        phasing += ["A"] if cur_allele == "cn_a" else ["B"]
-
-    sample_timing = timing_posterior.query(
-        "Sample_ID == @cur_sample and Chromosome == @cur_chrom_int and (not @maj_min_phased or Phasing in @phasing)"
-    )
-    cur_segments = sample_timing["Segment_ID"].unique()
-    cur_segments = np.array(cur_segments)[
-        np.argsort([int(x.split("-")[1]) for x in cur_segments])
-    ]
-
-    return cur_segments, sample_timing
-
-
-def get_timed_segments_overlap_color(overlaps):
-    timed_segments_overlap = np.zeros((*overlaps.shape, 4))
-    timed_segments_overlap[:] = COLORS_TAB10[: len(timed_segments_overlap), None, :]
-    timed_segments_overlap[:, :, -1] = overlaps
-
-    return timed_segments_overlap
-
-
-def plot_segment_overlap(
-    timed_segments_overlap, ax=None, which='timing', figsize=(10, 5)
-):
-    assert which in ['timing', 'sv']
-
-    if ax is None:
-        fig, ax = plt.subplots(figsize=figsize)
-
-    timed_segments_overlap_color = get_timed_segments_overlap_color(
-        timed_segments_overlap
-    )
-
-    ax.set_xticks(
-        np.arange(timed_segments_overlap.shape[1]) + 0.5,
-        labels=np.arange(timed_segments_overlap.shape[1]),
-    )
-    ax.set_yticks(
-        np.arange(timed_segments_overlap.shape[0]) + 0.5,
-        labels=np.arange(timed_segments_overlap.shape[0]),
-    )
-    ax.set_ylabel(f"{'timed segment' if which == 'timing' else 'SV'}")
-    ax.set_xlabel("Copy-number segments")
-    if min(timed_segments_overlap.shape) == 0:
-        return ax
-
-    ax.imshow(
-        timed_segments_overlap_color,
-        aspect="auto",
-        origin="lower",
-        extent=[
-            0,
-            timed_segments_overlap_color.shape[1],
-            0,
-            timed_segments_overlap_color.shape[0],
-        ],
-    )
-    for i in range(len(timed_segments_overlap)):
-        for j in range(len(timed_segments_overlap[i])):
-            if timed_segments_overlap[i, j] == 0:
-                continue
-            text = ax.text(
-                j + 0.5,
-                i + 0.5,
-                f"{timed_segments_overlap[i, j]:.2f}",
-                ha="center",
-                va="center",
-                color="black",
-                fontsize=10,
-            )
-
-    ax.set_ylim(ax.get_ylim()[::-1])
-    ax.set_title(f"segment overlap with {which}")
 
     return ax
 
@@ -874,7 +660,11 @@ def plot_all_diffs(
     cur_events = events_df.query("id == @cur_id")
     cur_chrom = cur_id.split(":")[1]
     diffs = get_diffs_from_events_df(cur_id, cur_events)
+    had_sv_overlaps = sv_overlaps is not None
+    sv_type_by_index = None
     if sv_overlaps is not None:
+        if len(sv_overlaps) > 2:
+            sv_type_by_index = {i: sv_type for i, sv_type in enumerate(sv_overlaps[2])}
         event_tuples = [np.sort(_get_events_from_diff(cur_diff, False), axis=1) for cur_diff in diffs]
         sv_overlaps = [np.where(np.logical_and(
             cur_event_tuples[:, 0][:, None] == sv_overlaps[0],
@@ -961,6 +751,29 @@ def plot_all_diffs(
             lw=0,
             ms=25,
         )
+
+        # Add SV legend markers only when SVs are plotted in the figure.
+        if had_sv_overlaps:
+            present_sv_indices = set()
+            for cur_chain in sv_overlaps:
+                if cur_chain is None:
+                    continue
+                for cur_sv_i in cur_chain:
+                    if cur_sv_i is not None:
+                        present_sv_indices.add(int(cur_sv_i))
+
+            for cur_sv_i in sorted(present_sv_indices)[:5]:
+                sv_type = sv_type_by_index.get(cur_sv_i, None) if sv_type_by_index is not None else None
+                ax.plot(
+                    [],
+                    [],
+                    color=f"C{cur_sv_i}",
+                    marker="o",
+                    label=f"SV {cur_sv_i} ({sv_type})" if sv_type is not None else f"SV {cur_sv_i}",
+                    lw=0,
+                    ms=10,
+                )
+
         ax.legend(bbox_to_anchor=(1, 1.05), fontsize=20)
 
     return axs
@@ -1880,86 +1693,6 @@ def smart_format(number):
     fmt = ".1f" if number == 0 else ".2f" if number > 0.01 else ".1e"
     return f"{number:{fmt}}"
 
-
-def add_baseline_events_to_tsg_og_plot(
-        axs,
-        cur_chrom,
-        data_per_length_scale,
-        cur_selection_points,
-        all_baseline_rates=None,
-        limit_baseline_at_conv=True,
-        simulated_conv=None,
-        segment_size_dict=DEFAULT_SEGMENT_SIZE_DICT,
-        accurate=False
-):
-
-    for i, data in enumerate(data_per_length_scale.values()):
-        cur_length_scale, cur_type = LS_I_DICT_REV[i]
-        if all_baseline_rates is None:
-            pass_rate_per_events = calc_event_rate_per_loci(
-                data_per_length_scale,
-                cur_selection_points,
-                cur_chrom,
-                data['length_scale'],
-                data['type'],
-                segment_size_dict=segment_size_dict,
-                accurate=accurate
-            )
-            pass_rate = pass_rate_per_events.mean()
-        else:
-            pass_rate = all_baseline_rates.loc[cur_chrom, cur_length_scale, cur_type]['baseline_rate']
-
-        n_events = len(data['cur_widths'])
-        n_baseline_events = int(pass_rate * n_events)
-        cur_widths = np.random.choice(data['cur_widths'], size=n_baseline_events, replace=False)
-        if n_baseline_events == 0:
-            cur_baseline_sim = np.zeros(len(data['signals']))
-        else:
-            cur_baseline_sim = convolution_simulation(
-                cur_widths=cur_widths, cur_chrom=cur_chrom, cur_length_scale=data['length_scale'],
-                segment_size=segment_size_dict[data['length_scale']], kernel=None,
-                kernel_edge=data['kernel_edge'], centromere_values=data['centromere_values'],
-                cur_signal=data['signals'] * pass_rate)
-
-        ax = axs[i//2]
-        direction = 1 if i % 2 == 0 else -1
-        cur_x = np.linspace(0, CHROM_LENS.loc[cur_chrom], len(cur_baseline_sim))
-        ax.legend([], [], frameon=False)
-        if limit_baseline_at_conv:
-            assert simulated_conv is not None, "simulated_conv must be provided if limit_baseline_at_conv is True"
-            cur_baseline_sim = np.minimum(cur_baseline_sim, simulated_conv[i])
-        ax.fill_between(cur_x, 0, direction * cur_baseline_sim, alpha=0.25, color='C2', hatch="///", 
-                    label=f'{data["type"].capitalize()} baseline rate = {pass_rate:.2f}, N = {n_baseline_events} (N_all = {n_events})')
-        handles, labels = list(zip(*[(h, l) for h, l in zip(*ax.get_legend_handles_labels()) if 'baseline' in l]))
-        legend = ax.legend(handles, labels, facecolor='white', framealpha=1)
-        legend.set_zorder(9)
-
-
-def add_regression_line(a, b, ax, color='k', use_confidence_interval=True,
-                        lw=1, alpha=0.2):
-
-    slope, intercept, r, p, std_err = linregress(a, b)
-
-    # Regression line + prediction interval
-    x_pred = np.linspace(a.min(), a.max(), 100)
-    y_pred = slope * x_pred + intercept
-
-    n = len(a)
-    mean_x = np.mean(a)
-    Sxx = np.sum((a - mean_x)**2)
-    residuals = b - (slope * a + intercept)
-    s_err = np.sqrt(np.sum(residuals**2) / (n - 2))
-    t_val = t.ppf(0.975, n - 2)
-    if use_confidence_interval:
-        pred_std = s_err * np.sqrt(1/n + (x_pred - mean_x)**2 / Sxx)
-    else:
-        # prediction interval
-        pred_std = s_err * np.sqrt(1 + 1/n + (x_pred - mean_x)**2 / Sxx)
-    pi = t_val * pred_std
-
-    ax.plot(x_pred, y_pred, color=color, zorder=0, lw=lw)
-    ax.fill_between(x_pred, y_pred - pi, y_pred + pi, color=color, alpha=alpha, zorder=0,
-                    edgecolor=None)
 
 
 def plot_inferred_events_per_sample(

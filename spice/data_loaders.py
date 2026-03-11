@@ -49,6 +49,47 @@ def resolve_copynumber_file(return_raw=False) -> str:
     return cur_file
 
 
+def _resolve_optional_input_file(path):
+    if path is None or isinstance(path, bool):
+        return None
+    if isinstance(path, str):
+        if path.strip() == '' or path.strip().lower() == 'none':
+            return None
+    if os.path.isabs(path):
+        return path
+    base_dir = config.get('directories', {}).get('base_dir', None)
+    if base_dir is None:
+        return path
+    return os.path.join(base_dir, path)
+
+
+def load_sv_data(sv_data_file, chrom_id=None):
+    """Load optional SV data file and return chromosome-specific rows.
+
+    If chrom_id is None, returns the full dataframe without filtering.
+    Accepts files with a pre-built 'chrom_id' column or with separate
+    'sample_id' and 'chrom' columns, in which case chrom_id is constructed
+    as ``sample_id + ':' + chrom``.
+    """
+    sv_data_file = _resolve_optional_input_file(sv_data_file)
+    if sv_data_file is None:
+        return None
+
+    sv_data = pd.read_csv(sv_data_file, sep=None, engine='python')
+    if 'chrom_id' not in sv_data.columns:
+        assert {'sample_id', 'chrom'}.issubset(sv_data.columns), (
+            f'SV data must have a "chrom_id" column or both "sample_id" and "chrom" columns. '
+            f'Got: {sorted(sv_data.columns)}')
+        sv_data['chrom_id'] = sv_data['sample_id'] + ':' + sv_data['chrom'].astype(str)
+    required_columns = {'chrom_id', 'svclass', 'start', 'end'}
+    missing_columns = required_columns - set(sv_data.columns)
+    assert not missing_columns, f'Missing required SV columns: {sorted(missing_columns)}'
+    log_debug(logger, f'Loaded SV data from {sv_data_file} with {len(sv_data)} rows')
+    if chrom_id is not None:
+        sv_data = sv_data.query('chrom_id == @chrom_id')
+    return sv_data
+
+
 def load_final_events():
     if 'final_events' in config['input_files']:
         filename = config['input_files']['final_events']

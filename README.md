@@ -143,7 +143,7 @@ spice event_inference --clean --config <path/to/config>
 SPICE expects tab-separated input files with copy-number segments. See example file `data/example_data.tsv`.
 
 **Required columns:**
-- `sample`: Sample identifier
+- `sample_id`: Sample identifier
 - `chrom`: Chromosome name
 - `start`: Segment start position
 - `end`: Segment end position
@@ -153,6 +153,7 @@ SPICE expects tab-separated input files with copy-number segments. See example f
 **Optional files:**
 - `wgd_status`: TSV with WGD status per sample (see section 1.3)
 - `xy_samples`: TSV with sex status per sample (see section 1.4)
+- `sv`: Pickle file (`.pickle`) with SV calls used for SV-constrained event matching (see section 3.2.4)
 
 Total copy-number mode can be enabled by setting `params.total_cn: True` in the config file.
 
@@ -211,6 +212,16 @@ Effects
 - For XY samples with haplotype-specific CN, the minor copy number of `chrX` and `chrY` is set to 0 during preprocessing and splitting.
 - For XX samples, `chrY` is excluded (no segments on `chrY`).
 
+#### 3.2.4 Structural Variant (SV) Input
+
+SV support in `event_inference` is optional and enabled by setting the config key `input_files.sv` to the path of the structural variant calls in the config.
+
+**Expected columns**
+- `sample_id`: Sample identifier
+- `chrom`: Chromosome name
+- `start`: Segment start position
+- `end`: Segment end position
+- `svclass`: Type of SV, must be either "DUP" or "DEL"
 
 
 ### 3.3 Expected Output

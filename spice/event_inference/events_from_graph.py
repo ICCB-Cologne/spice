@@ -241,11 +241,11 @@ def connect_start_ends_using_svs(cur_chrom_segments, cur_sv_data, starts, ends, 
     cur_segment_breakpoints_ends =  np.append(cur_chrom_segments['start'].values[0], cur_chrom_segments['end'].values)
 
     if 'start_for_overlap' not in cur_sv_data.columns or 'end_for_overlap' not in cur_sv_data.columns:
-        cur_sv_data['start_for_overlap'] = cur_sv_data['start1']
-        cur_sv_data['end_for_overlap'] = cur_sv_data['end2']
+        cur_sv_data['start_for_overlap'] = cur_sv_data['start']
+        cur_sv_data['end_for_overlap'] = cur_sv_data['end']
 
-        cur_sv_data.loc[cur_sv_data['svclass'] == 'DEL', 'start_for_overlap'] = cur_sv_data.loc[cur_sv_data['svclass'] == 'DEL', 'end2']
-        cur_sv_data.loc[cur_sv_data['svclass'] == 'DEL', 'end_for_overlap'] = cur_sv_data.loc[cur_sv_data['svclass'] == 'DEL', 'start1']
+        cur_sv_data.loc[cur_sv_data['svclass'] == 'DEL', 'start_for_overlap'] = cur_sv_data.loc[cur_sv_data['svclass'] == 'DEL', 'end']
+        cur_sv_data.loc[cur_sv_data['svclass'] == 'DEL', 'end_for_overlap'] = cur_sv_data.loc[cur_sv_data['svclass'] == 'DEL', 'start']
 
     sv_start_matches = np.abs(cur_segment_breakpoints_starts[unique_starts][:, None] - cur_sv_data['start_for_overlap'].values) < sv_matching_threshold
     sv_end_matches = np.abs(cur_segment_breakpoints_ends[unique_ends][:, None] - cur_sv_data['end_for_overlap'].values) < sv_matching_threshold

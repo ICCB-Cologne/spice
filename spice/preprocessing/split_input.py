@@ -3,6 +3,7 @@ import sys
 import pickle
 from joblib import Parallel, delayed
 
+import numpy as np
 import pandas as pd
 import fstlib
 
@@ -17,7 +18,7 @@ else:
     except ImportError:
         files = None
 from spice.logging import log_debug, get_logger
-from spice.data_loaders import resolve_copynumber_file, load_raw_copy_number_data
+from spice.data_loaders import resolve_copynumber_file, load_raw_copy_number_data, load_sv_data
 from spice.event_inference.fst_assets import nowgd_fst, get_diploid_fsa, T_forced_WGD
 from spice.event_inference.fsts import fsa_from_string
 from spice.event_inference.events_from_graph import create_events_df_from_single_path_solution
@@ -148,6 +149,9 @@ def _prepare_split_inputs(name, keep_old=False, selected_ids=None):
     groupby = data.groupby(['sample_id', 'chrom', 'allele'])
     tasks = list(groupby)
 
+    sv_data_file = config['input_files'].get('sv', None)
+    sv_data = load_sv_data(sv_data_file)  # loads full table; filtering per-chrom happens in _process_group
+
     context = {
         'results_events_dir': results_events_dir,
         'total_cn': total_cn,
@@ -157,6 +161,7 @@ def _prepare_split_inputs(name, keep_old=False, selected_ids=None):
         'lookup_table_single_solution': lookup_table_single_solution,
         'lookup_table_multiple_solutions': lookup_table_multiple_solutions,
         'copynumber_file': copynumber_file,
+        'sv_data': sv_data,
     }
 
     return context, tasks
@@ -185,6 +190,7 @@ def _process_group(context, key, chrom_segments):
     lookup_table_single_solution = context['lookup_table_single_solution']
     lookup_table_multiple_solutions = context['lookup_table_multiple_solutions']
     copynumber_file = context['copynumber_file']
+    sv_data = context['sv_data']
 
     cur_total_cn = total_cn and not (cur_sample in xy_samples and cur_chrom in ['chrX', 'chrY'])
     wgd = wgd_status.loc[cur_sample]
@@ -209,6 +215,24 @@ def _process_group(context, key, chrom_segments):
         log_debug(logger, f'{cur_id}: {chrom_string} - {chrom_dist}: too many events, skipping (event limit at {config["params"]["dist_limit"]})')
         return ('none', cur_id)
 
+    # Determine if any SV breakpoints coincide with this chromosome's segment boundaries.
+    # If so, skip the lookup tables — the full pipeline must run to apply SV constraints.
+    chrom_id = f"{cur_sample}:{cur_chrom}"
+    cur_sv_data = sv_data.query('chrom_id == @chrom_id') if sv_data is not None else None
+    has_sv_overlap = False
+    if cur_sv_data is not None and len(cur_sv_data) > 0:
+        sv_threshold = config['params']['sv_matching_threshold']
+        relevant_svs = cur_sv_data.query('svclass == "DUP" or svclass == "DEL"')
+        if len(relevant_svs) > 0:
+            breakpoints = np.unique(np.concatenate([
+                chrom_segments['start'].values, chrom_segments['end'].values]))
+            has_sv_overlap = (
+                np.any(np.abs(relevant_svs['start'].values[:, None] - breakpoints) < sv_threshold) or
+                np.any(np.abs(relevant_svs['end'].values[:, None] - breakpoints) < sv_threshold)
+            )
+    if has_sv_overlap:
+        log_debug(logger, f'{cur_id}: SV data overlaps with breakpoints, skipping lookup table')
+
     if (wgd, chrom_string) in lookup_table_single_solution:
         cur = create_events_df_from_single_path_solution(
             lookup_table_single_solution[(wgd, chrom_string)], cur_id, chrom_segments=chrom_segments,
@@ -217,7 +241,7 @@ def _process_group(context, key, chrom_segments):
             cur, os.path.join(str(results_events_dir), 'wgd' if wgd else 'nowgd', 'full_paths_single_solution', f"{cur_id}.pickle"))
         log_debug(logger, f'{cur_id}: Found in lookup table! Copy-number profile = {chrom_string}. Nr of events = {n_events}. Saved to {"wgd" if wgd else "nowgd"}/full_paths_single_solution')
         return ('single', cur_id)
-    elif (wgd, chrom_string) in lookup_table_multiple_solutions:
+    elif not has_sv_overlap and (wgd, chrom_string) in lookup_table_multiple_solutions:  # skip if SVs constrain the solution
         cur = lookup_table_multiple_solutions[(wgd, chrom_string)]
         assert getattr(cur, '__class__', None).__name__ == 'FullPaths', type(cur)
         assert cur.is_wgd == wgd, (cur.is_wgd, wgd)

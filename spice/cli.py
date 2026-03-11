@@ -207,25 +207,22 @@ def main_event_inference(args):
         logger.info(f'Selecting only IDs: {selected_ids}')
 
     # Check number of samples and warn if many
-    try:
-        import pandas as pd
-        copynumber_file = config['input_files']['copynumber']
-        df = pd.read_csv(copynumber_file, sep='\t', usecols=['sample_id'])
-        n_samples = df['sample_id'].nunique()
-        logger.info(f'Input copy-number file contains {n_samples} unique samples.')
-        if n_samples > 50:
-            logger.warning("=" * 80)
-            logger.warning("!!! WARNING !!!")
-            logger.warning("Large number of input samples detected (N={n_samples}).")
-            logger.warning("")
-            logger.warning("SPICE can be very slow when processing many samples in serial mode.")
-            logger.warning("For large datasets, we strongly recommend using the Snakemake workflow")
-            logger.warning("for parallel execution on a cluster.")
-            logger.warning("")
-            logger.warning("See README section 'Using with Snakemake' for more information:")
-            logger.warning("=" * 80)
-    except Exception as e:
-        logger.debug(f"Could not count samples from input file: {e}")
+    import pandas as pd
+    copynumber_file = config['input_files']['copynumber']
+    df = pd.read_csv(copynumber_file, sep='\t', usecols=['sample_id'])
+    n_samples = df['sample_id'].nunique()
+    logger.info(f'Input copy-number file contains {n_samples} unique samples.')
+    if n_samples > 50:
+        logger.warning("=" * 80)
+        logger.warning("!!! WARNING !!!")
+        logger.warning("Large number of input samples detected (N={n_samples}).")
+        logger.warning("")
+        logger.warning("SPICE can be very slow when processing many samples in serial mode.")
+        logger.warning("For large datasets, we strongly recommend using the Snakemake workflow")
+        logger.warning("for parallel execution on a cluster.")
+        logger.warning("")
+        logger.warning("See README section 'Using with Snakemake' for more information:")
+        logger.warning("=" * 80)
 
     total_cn = config['params'].get('total_cn', False)
     logger.info(f'Copy-number mode: {"total_cn" if total_cn else "haplotype-specific"}')
@@ -279,7 +276,7 @@ def main_event_inference(args):
                     cur_id=cur_id,
                     is_wgd=(wgd_status == 'wgd'),
                     chrom_segments_file=chrom_segments_file,
-                    sv_data_file=config['params'].get('sv_data_file', None),
+                    sv_data_file=config['input_files'].get('sv', None),
                     chrom_file=os.path.join(results_events_dir, wgd_status, 'chrom_data_full', f'{cur_id}.pickle'),
                     sv_matching_threshold=config['params']['sv_matching_threshold'],
                     use_cache=config['params']['use_cache'],
@@ -302,7 +299,7 @@ def main_event_inference(args):
                                         os.path.join(results_events_dir, 'wgd', 'full_paths_multiple_solutions')]
         for wgd_status in ['nowgd', 'wgd']:
             if not os.path.exists(os.path.join(str(results_events_dir), wgd_status, 'full_paths_multiple_solutions')):
-                logger.warning(f"Directory {os.path.join(str(results_events_dir), wgd_status, 'full_paths_multiple_solutions')} does not exist, skipping disambiguation for {wgd_status}")
+                logger.info(f"Directory {os.path.join(str(results_events_dir), wgd_status, 'full_paths_multiple_solutions')} does not exist, skipping disambiguation for {wgd_status}")
                 continue
             is_wgd = (wgd_status == 'wgd')
             cur_ids = [x.replace('.pickle', '')
@@ -337,7 +334,7 @@ def main_event_inference(args):
         skip_existing = config['params'].get('skip_existing', False)
         for wgd_status in ['nowgd', 'wgd']:
             if not os.path.exists(os.path.join(str(results_events_dir), wgd_status, 'chrom_data_large')):
-                logger.warning(f"Directory {os.path.join(str(results_events_dir), wgd_status, 'chrom_data_large')} does not exist, skipping large chromosomes for {wgd_status}")
+                logger.info(f"Directory {os.path.join(str(results_events_dir), wgd_status, 'chrom_data_large')} does not exist, skipping large chromosomes for {wgd_status}")
                 continue
             is_wgd = (wgd_status == 'wgd')
             cur_ids = [x.replace('.pickle', '')
@@ -357,7 +354,7 @@ def main_event_inference(args):
                         chrom_file=os.path.join(results_events_dir, wgd_status, 'chrom_data_large', f'{cur_id}.pickle'),
                         is_wgd=is_wgd,
                         chrom_segments_file=chrom_segments_file,
-                        sv_data_file=config['params'].get('sv_data_file', None),
+                        sv_data_file=config['input_files'].get('sv', None),
                         knn_train_data=None,
                         k=config['params']['knn_k'],
                         total_cn=total_cn,

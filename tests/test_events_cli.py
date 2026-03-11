@@ -9,6 +9,8 @@ import shutil
 import pytest
 import yaml
 
+import pandas as pd
+
 
 @pytest.fixture
 def temp_workspace():
@@ -30,6 +32,10 @@ def temp_workspace():
         if os.path.exists(example_data):
             shutil.copy(example_data, os.path.join(data_dir, 'example_data.tsv'))
 
+        example_sv_data = os.path.join(repo_root, 'data', 'example_sv_data.tsv')
+        if os.path.exists(example_sv_data):
+            shutil.copy(example_sv_data, os.path.join(data_dir, 'example_sv_data.tsv'))
+
         total_cn_data = os.path.join(repo_root, 'data', 'test_data_total_cn_small.tsv')
         total_cn_input = os.path.join(data_dir, 'test_data_total_cn_small.tsv')
         if os.path.exists(total_cn_data):
@@ -40,7 +46,7 @@ def temp_workspace():
             'name': 'test_run',
             'input_files': {
                 'copynumber': os.path.join(data_dir, 'example_data.tsv'),
-                'knn_train': os.path.join(repo_root, 'spice', 'objects', 'train_events_sv_and_unamb.pickle')
+                'sv': os.path.join(data_dir, 'example_sv_data.tsv'),
             },
             'directories': {
                 'base_dir': tmpdir,
@@ -343,10 +349,15 @@ class TestEventInferenceExecution:
         with open(os.path.join(results_dir, 'events', 'failed_reports.tsv'), 'r') as f:
             content = f.readlines()
             assert len(content) == 1, f"Expected only header in failed_reports.tsv but found {len(content)-1} entries"
+        
+        # Check that SV-based solution was found
+        final_events_df = pd.read_csv(os.path.join(results_dir, 'final_events.tsv'), sep='\t')
+        assert final_events_df.query('id == "sample_13:chr12:cn_b"')['solved'].unique()[0] == 'sv'  
+  
         # Ensure the debug sample ID appears in the failure report
         # with open(os.path.join(results_dir, 'events', 'failed_reports.tsv'), 'r') as f:
         #     content = f.read()
-        #     assert 'RPelvicLNMet_A12D-0020_CRUK_PC_0020_M3_DEBUG' in content
+        #     assert 'sample_DEBUG' in content
 
     def test_normal_execution_total_cn(self, temp_workspace):
         """Test basic event_inference execution with total_cn mode enabled."""
@@ -393,6 +404,11 @@ class TestEventInferenceExecution:
         with open(os.path.join(results_dir, 'events', 'failed_reports.tsv'), 'r') as f:
             content = f.readlines()
             assert len(content) == 1, f"Expected only header in failed_reports.tsv but found {len(content)-1} entries"
+        
+        # Check that SV-based solution was found
+        final_events_df = pd.read_csv(os.path.join(results_dir, 'final_events.tsv'), sep='\t')
+        assert final_events_df.query('id == "sample_13:chr12:cn_b"')['solved'].unique()[0] == 'sv'  
+
 
     def test_execution_with_extra_preprocessing(self, temp_workspace):
         """Test event_inference execution with extra preprocessing steps."""
@@ -409,6 +425,11 @@ class TestEventInferenceExecution:
         assert os.path.exists(os.path.join(results_dir, 'final_events.tsv')), "final_events.tsv was not created"
         assert os.path.exists(os.path.join(results_dir, 'events_summary.tsv')), "events_summary.tsv was not created"
         assert os.path.exists(os.path.join(results_dir, 'events', 'failed_reports.tsv')), "failed_reports.tsv was not created"
+        
+        # Check that SV-based solution was found
+        final_events_df = pd.read_csv(os.path.join(results_dir, 'final_events.tsv'), sep='\t')
+        assert final_events_df.query('id == "sample_13:chr12:cn_b"')['solved'].unique()[0] == 'sv'  
+
         # Ensure that no ID failed
         with open(os.path.join(results_dir, 'events', 'failed_reports.tsv'), 'r') as f:
             content = f.readlines()
@@ -455,13 +476,13 @@ class TestPlottingExecution:
         
         # Now test plotting
         result = subprocess.run(
-            ['spice', 'plotting', '--config', config_path, '--plot-events-per-sample', 'LAdrenalMet_A31E-0018_CRUK_PC_0018_M3'],
+            ['spice', 'plotting', '--config', config_path, '--plot-events-per-sample', 'sample_1'],
             capture_output=True,
             text=True,
         )
         assert result.returncode == 0, f"Plotting execution failed: {result.stderr}"
         plots_dir = os.path.join(tmpdir, 'plots', 'test_run')
-        plot_file = os.path.join(plots_dir, 'LAdrenalMet_A31E-0018_CRUK_PC_0018_M3_events.png')
+        plot_file = os.path.join(plots_dir, 'sample_1_events.png')
         assert os.path.exists(plot_file), f"Plot was not created ({plot_file})"
 
     def test_plotting_with_plot_id(self, temp_workspace):
@@ -478,12 +499,12 @@ class TestPlottingExecution:
         
         # Now test plotting with plot-id
         result = subprocess.run(
-            ['spice', 'plotting', '--config', config_path, '--plot-events-per-id', 'LAdrenalMet_A31E-0018_CRUK_PC_0018_M3:chr1:cn_a'],
+            ['spice', 'plotting', '--config', config_path, '--plot-events-per-id', 'sample_1:chr1:cn_a'],
             capture_output=True,
             text=True,
         )
         assert result.returncode == 0, f"Plotting execution failed: {result.stderr}"
         plots_dir = os.path.join(tmpdir, 'plots', 'test_run')
-        plot_file = os.path.join(plots_dir, 'LAdrenalMet_A31E-0018_CRUK_PC_0018_M3_chr1_cn_a_events.png')
+        plot_file = os.path.join(plots_dir, 'sample_1_chr1_cn_a_events.png')
         assert os.path.exists(plot_file), f"Plot was not created ({plot_file})"
 

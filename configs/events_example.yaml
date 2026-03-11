@@ -7,4 +7,5 @@ input_files:
   copynumber: 'data/example_data.tsv'
   xy_status: 'data/example_xy_status.tsv'
   wgd_status: 'data/example_wgd_status.tsv'
+  sv: 'data/example_sv_data.tsv'
 note: 'Example configuration for testing purposes. Data is taken from Gundem et al. Nature 2015 as processed in the MEDICC2 paper'
