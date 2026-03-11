@@ -2,8 +2,12 @@
 
 ![](doc/logo_banner.png)
 
-**SPICE**, Selection Patterns In somatic Copy-number Events, is an event-level framework that infers discrete copy-number events from allele-specific profiles.
+**SPICE**, Selection Patterns In somatic Copy-number Events, is a framework that
+1) infers discrete copy-number events from allele-specific profiles,
+2) detects loci of selection in the copy-number data and 
+3) can assign loci of selection to copy-number data
 
+See the [accompanying BioRxiv preprint](www.biorxiv.org/content/10.64898/2026.03.01.708809v1) for more information.
 
 ## 0. Installation
 
@@ -395,22 +399,27 @@ For interactive exploration, see `notebooks/loci_plotting.ipynb`.
 
 ---
 
-## 7. Advanced Usage
-
-### 7.1 Python API
+## 7. Python API
 
 You can also import and use SPICE functions directly in Python. Note that it is important to run `spice.load_config(config_file)` before any other spice imports
 ```python
+# First import spice and set the config location
 config_file = 'configs/events_example.yaml'
 import spice
 spice.load_config(config_file);
+
+# Then perform any other spice imports
+from spice.data_loaders import load_chrom_lengths
+...
 ```
 
 See also the example notebooks for how to use the API.
 
 ## 8. Citation
 
-If you use SPICE in your research, please cite: [TODO]
+If you use SPICE in your research, please cite the [accompanying BioRxiv preprint](www.biorxiv.org/content/10.64898/2026.03.01.708809v1):
+
+> **Deciphering selection patterns of somatic copy-number events** Tom L. Kaufmann, Adam Streck, Florian Markowetz, Peter Van Loo, Roland F. Schwarz. bioRxiv 2026; doi: https://doi.org/10.64898/2026.03.01.708809
 
 ## 9. License
 
@@ -418,5 +427,4 @@ GNU GENERAL PUBLIC LICENSE
 
 ## 10. Contact
 
-For questions and issues, please contact: tom.kaufmann@iccb-cologne.org
-
+For questions and issues, please contact tom.kaufmann@iccb-cologne.org or roland.schwarz@iccb-cologne.org.
