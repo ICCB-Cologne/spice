@@ -415,16 +415,22 @@ from spice.data_loaders import load_chrom_lengths
 
 See also the example notebooks for how to use the API.
 
-## 8. Citation
+## 8. Known issues
+
+**SPICE event inference runs for too long / doesn't finish:** This is usually due to the MCMC event inference for large chromosomes (>9 events). Either reduce the paramter `mcmc_n_iterations_scale` which will reduce the total number of iterations to run or set the parameter `time_limit_mcmc` to a time limit (in seconds) which will abort the computation. Note that in the case of `time_limit_mcmc`, no output will be saved.
+
+**Long computation time for single-cell data:** SPICE treats every sample/chromsome pair separately. For single-cell datasets this results in a massive amount of individual calculations. We recommend to first remove duplicate sample/chromosomes and then run SPICE on this reduced dataset.
+
+## 9. Citation
 
 If you use SPICE in your research, please cite the [accompanying BioRxiv preprint](www.biorxiv.org/content/10.64898/2026.03.01.708809v1):
 
 > **Deciphering selection patterns of somatic copy-number events** Tom L. Kaufmann, Adam Streck, Florian Markowetz, Peter Van Loo, Roland F. Schwarz. bioRxiv 2026; doi: https://doi.org/10.64898/2026.03.01.708809
 
-## 9. License
+## 10. License
 
 GNU GENERAL PUBLIC LICENSE
 
-## 10. Contact
+## 11. Contact
 
 For questions and issues, please contact tom.kaufmann@iccb-cologne.org or roland.schwarz@iccb-cologne.org.
