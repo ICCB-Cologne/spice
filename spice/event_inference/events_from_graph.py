@@ -80,6 +80,41 @@ def full_paths_from_graph_with_sv(cur_id, is_wgd, sv_data, chrom_segments, chrom
             sv_matching_threshold=sv_matching_threshold,
             total_cn=total_cn,
             **kwargs)
+    # WGD + a zero-CN segment: drop DEGENERATE solutions padded with an empty event.
+    #
+    # A segment already at CN 0 before the doubling stays 0 after it, so the loss is fully explained
+    # by the pre-WGD half and the post-WGD slot has nothing left to account for. The enumeration
+    # walks paths of length exactly `chrom.n_events`, so such a path can only be expressed by
+    # spending one of its steps on a no-op: a diff of all zeros, spanning no segment.
+    #
+    # `chrom.n_events` is NOT wrong. Measured on the fixture profile [0 3 0 4 0 2 0] (n_events 6,
+    # the real TCGA-33-AASD:chr18:cn_b profile): 683 solutions, of which **668 are clean** with six
+    # genuine events and only **15** carry the no-op (five real events padded to six). So the FST
+    # distance is right for the overwhelming majority and reducing the count would corrupt them;
+    # it is the padded minority that cannot be represented.
+    #
+    # They cannot simply be left in. An empty diff has no '1', so the coordinate conversion in
+    # raw_events_from_FullPaths -- `(diff.find('1'), diff.rfind('1')+1)` -- collapses to a single
+    # index, and since segment breakpoints are contiguous (`starts[i] == ends[i-1] + 1`) the width
+    # comes out as exactly -1. On the 2026-09-04 TCGA run that cost 275 work units across 239
+    # samples (7.9% of the WGD stratum), biased toward samples 1.83x more event-dense than average.
+    #
+    # Dropping them keeps every invariant the code downstream relies on -- the surviving solutions
+    # all total n_events and all have equal length -- and loses no explanation of the profile, since
+    # clean solutions remain. If ALL solutions are padded we must not invent one: fall through to the
+    # explicit error below, which reports the unit rather than emitting a no-op event.
+    #
+    # OPEN QUESTION, deliberately not decided here: whether those padded paths are spurious or are
+    # the only visible trace of a legitimate (n_events - 1) history that a fixed-budget enumeration
+    # cannot express. Answering it would change event counts for units that currently succeed, so it
+    # needs the model's owner. This change only stops the ones that currently CRASH.
+    _padded = [i for i, diff in enumerate(diffs)
+               if any(x.diff.find('1') == -1 for x in diff)]
+    if _padded and len(_padded) < len(diffs):
+        log_debug(logger, f'{cur_id}: dropping {len(_padded)} of {len(diffs)} solutions padded with '
+                          f'an empty (zero-span) event; {len(diffs) - len(_padded)} clean solutions remain')
+        diffs = [diff for i, diff in enumerate(diffs) if i not in set(_padded)]
+
     # sorted(), not raw set order: Diff carries string fields, and CPython randomises string hashing
     # per process, so `enumerate(set(...))` handed out a different index to each event on every run.
     # Those indices are what the solution Counters, the pickled FullPaths and ultimately the row
@@ -98,8 +133,10 @@ def full_paths_from_graph_with_sv(cur_id, is_wgd, sv_data, chrom_segments, chrom
     assert all([solution.total() == (chrom.n_events) for solution in unique_solutions]), f"expected nr of events: {chrom.n_events}. nr of events per solution: {[solution.total() for solution in unique_solutions]}"
 
     if any([event.diff.find('1')==-1 for event in unique_events.values()]):
-        raise ValueError('Invalid empty events found. This usually means that the number of events '
-                         'was calculated incorrectly for WGD samples.')
+        raise ValueError('Invalid empty events found: EVERY solution is padded with a zero-span '
+                         'event, so there is no clean explanation of this profile to fall back on '
+                         '(the degenerate-solution filter above handles the mixed case). This is the '
+                         'WGD + zero-CN interaction; see the comment above the filter.')
 
     if len(unique_solutions) == 1:
         if sv_selected_events is not None and (chrom.n_events - len(sv_selected_events)) <= 1 and chrom.n_events > 1:
