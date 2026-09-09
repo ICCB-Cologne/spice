@@ -1357,6 +1357,7 @@ def filter_loci(
     th_max_abs_fitness=0,
     th_sum_abs_fitness=0,
     th_locus_prominence=10,
+    th_locus_mean_fitness=1,
     th_added_events=0,
     perform_prominence_overlap_check=False,
     n_iterations_optim=100_000,
@@ -1410,6 +1411,7 @@ def filter_loci(
             th_max_abs_fitness=th_max_abs_fitness,
             th_sum_abs_fitness=th_sum_abs_fitness,
             th_locus_prominence=th_locus_prominence,
+            th_locus_mean_fitness=th_locus_mean_fitness,
             th_added_events=th_added_events,
             prominence_calc_on=prominence_calc_on,
             perform_prominence_overlap_check=perform_prominence_overlap_check
@@ -1523,6 +1525,7 @@ def _identify_loci_to_filter(
     th_max_abs_fitness=1,
     th_sum_abs_fitness=2,
     th_locus_prominence=10,
+    th_locus_mean_fitness=1,
     th_added_events=15,
     prominence_calc_on='conv',
     perform_prominence_overlap_check=False
@@ -1560,6 +1563,11 @@ def _identify_loci_to_filter(
         locus_prominence_bool = np.logical_or(locus_prominence_bool, ~locus_prominence_has_overlap)
     log_debug(logger, f'Removing loci based on locus prominence: {np.sum(~locus_prominence_bool)} out of {len(locus_prominence_bool)} loci')
 
+    ## Filter based on mean directed fitness across length scales
+    mean_directed_fitness = 2*np.maximum(cur_fitness, 0).mean(axis=1)
+    locus_mean_fitness_bool = mean_directed_fitness > th_locus_mean_fitness
+    log_debug(logger, f'Removing loci based on mean directed fitness: {np.sum(~locus_mean_fitness_bool)} out of {len(locus_mean_fitness_bool)} loci')
+
     ## Filter based on added events
     added_events = calc_total_events_per_loci(
         cur_chrom,
@@ -1575,7 +1583,8 @@ def _identify_loci_to_filter(
         max_abs_fitness >= (0 if cur_iteration is not None and cur_iteration==0 else th_max_abs_fitness),
         sum_abs_fitness >= (0 if cur_iteration is not None and cur_iteration==0 else th_sum_abs_fitness),
         total_added_events >= th_added_events,
-        locus_prominence_bool
+        locus_prominence_bool,
+        locus_mean_fitness_bool
     ])
     loci_to_keep = np.where(loci_to_keep_bool)[0]
     loci_to_remove = np.where(~loci_to_keep_bool)[0]

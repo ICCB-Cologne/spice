@@ -65,7 +65,8 @@ def run_loci_detection_per_chrom(
     filter_N_iterations_optim=100_000,
     final_limiting_N_iterations_optim=10_000,
     N_bootstrap_for_widths=200,
-    th_locus_prominence=5
+    th_locus_prominence=5,
+    th_locus_mean_fitness=1
 ):
     """
     Run the loci detection pipeline for a given chromosome.
@@ -107,6 +108,8 @@ def run_loci_detection_per_chrom(
         Number of iterations for ranking
     th_locus_prominence : float, default=5
         Threshold for locus prominence filtering
+    th_locus_mean_fitness : float, default=1
+        Threshold for the mean directed fitness post-processing filter
     """
     
     # One stream per chromosome, so a chromosome's loci are the same whether it was detected on its
@@ -481,9 +484,10 @@ def run_loci_detection_per_chrom(
             show_progress_optim=False,
             max_deviation_optim=0.00001,
             th_locus_prominence=th_locus_prominence,
+            th_locus_mean_fitness=th_locus_mean_fitness,
             calc_new_force_new=overwrite,
             calc_new_filename=os.path.join(output_dir, filenames['final_filter_loci']))
-    
+
     # Final limiting step
     if 'final_limiting' in which_steps:
         logger.info(f'Running final_limiting')
@@ -891,12 +895,12 @@ def run_loci_assignment_per_chrom(
 ) -> Tuple[List, List]:
     """
     Run loci assignment for a single chromosome using provided loci positions.
-    
+
     This function takes pre-defined loci positions and optimizes their fitness values
     by: 1) creating dummy selection points with zero fitness
     2) optimizing fitness with fixed positions
     3) filtering by CI constraints
-    
+
     Parameters
     ----------
     reference_loci_df : pd.DataFrame
@@ -919,7 +923,7 @@ def run_loci_assignment_per_chrom(
         Force recalculation
     overwrite_preprocessing : bool
         Force recalculation of preprocessing caches (bootstrap signals and data_per_length_scale)
-    
+
     Returns
     -------
     Tuple[List, List]
@@ -994,10 +998,10 @@ def run_loci_assignment_per_chrom(
         calc_new_force_new=overwrite,
         calc_new_filename=os.path.join(output_dir, 'assignment_within_ci_filtered.pickle')
     )
-    
+
     # Save results
     save_pickle(filtered_selection_points, os.path.join(output_dir, 'final_selection_points.pickle'))
-    
+
     # Infer widths (placeholder - set to small widths for now)
     N_loci = sum(len(chrom_loci.query('type == @t')) for t in ['OG', 'TSG'])
     loci_widths = [1e6] * N_loci  # Default width of 1 Mbp
@@ -1050,7 +1054,7 @@ def loci_assignment(
         Force recalculation of preprocessing caches
     cores : int
         Number of cores for parallelization (not used in current version)
-    
+
     Notes
     -----
     Requires config['input_files']['reference_loci'] to point to a TSV file with columns:

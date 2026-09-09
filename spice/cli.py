@@ -601,6 +601,7 @@ def _run_permutation_unit(raw_events, loci_params, loci_results_dir, chroms, see
             N_bootstrap_for_widths=loci_params['N_bootstrap_for_widths'],
             within_ci_N_iterations=loci_params['within_ci_N_iterations'],
             th_locus_prominence=loci_params['th_locus_prominence'],
+            th_locus_mean_fitness=loci_params['th_locus_mean_fitness'],
         )
     loci_df, _, _ = combine_loci(loci_results_dir=unit_dir, processed_events=processed,
                                  calculate_p_value=False, mode='detection')
@@ -773,7 +774,8 @@ def _detect_one(run_loci_detection_per_chrom, processed, chrom, steps, loci_para
         final_limiting_N_iterations_optim=loci_params['final_limiting_N_iterations_optim'],
         N_bootstrap_for_widths=loci_params['N_bootstrap_for_widths'],
         within_ci_N_iterations=loci_params['within_ci_N_iterations'],
-        th_locus_prominence=loci_params['th_locus_prominence'])
+        th_locus_prominence=loci_params['th_locus_prominence'],
+        th_locus_mean_fitness=loci_params['th_locus_mean_fitness'])
 
 def main_loci_detection(args):
     """Run loci detection mode (de-novo)."""
@@ -931,6 +933,7 @@ def main_loci_detection(args):
             N_bootstrap_for_widths=loci_params['N_bootstrap_for_widths'],
             within_ci_N_iterations=loci_params['within_ci_N_iterations'],
             th_locus_prominence=loci_params['th_locus_prominence'],
+            th_locus_mean_fitness=loci_params['th_locus_mean_fitness'],
         )
 
     if args.chrom is not None:
