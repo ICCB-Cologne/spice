@@ -35,6 +35,27 @@ else:
 logger = get_logger('loci_detection_main')
 CHROMS = ['chr' + str(x) for x in range(1, 23)] + ['chrX', 'chrY']
 
+#: Stages whose persisted pickle holds the producing function's WHOLE return tuple, while the
+#: in-memory RESULTS entry is only its first element (the per-length-scale selection points):
+#:   detection               -> (selection_points, _, _)
+#:   optimizing_intermediate -> (selection_points, all_losses)      [final_optimization_step]
+#:   merging                 -> (selection_points, conv, removed, to_remove)
+#:   optimizing              -> (selection_points, _)               [final_optimization_step]
+#: CALC_NEW pickles the return value, so a run that RESUMES one of these from disk must unwrap it;
+#: a run that reaches it in the same process never does, because the assignment already unpacked.
+#: Missing the unwrap does not fail where it happens -- the next stage receives the 8-element outer
+#: tuple where it expects the tracks, and dies confusingly, e.g. `spice loci_detection --chrom chr21
+#: --loci-steps filter_loci_intermediate_1` reporting "Number of locus widths (16) does not match
+#: number of selection points (8)", the 8 being the number of LENGTH SCALES rather than loci.
+_STAGES_PICKLED_AS_TUPLE = frozenset({'detection', 'optimizing_intermediate', 'merging', 'optimizing'})
+
+
+def _load_stage(output_dir, filenames, stage):
+    """Load one persisted detection stage, unwrapping the stages saved as a return tuple."""
+    obj = open_pickle(os.path.join(output_dir, filenames[stage]))
+    return obj[0] if stage in _STAGES_PICKLED_AS_TUPLE else obj
+
+
 def run_loci_detection_per_chrom(
     final_events_df,
     cur_chrom,
@@ -233,7 +254,7 @@ def run_loci_detection_per_chrom(
         log_debug(logger, f'Output: {output_dir}/{filenames["flipping"]}')
         
         if RESULTS['detection'] is None:
-            RESULTS['detection'], _, _ = open_pickle(os.path.join(output_dir, filenames['detection']))
+            RESULTS['detection'] = _load_stage(output_dir, filenames, 'detection')
         
         RESULTS['flipping'] = flip_up_down_assignment(
             cur_chrom=cur_chrom,
@@ -251,7 +272,7 @@ def run_loci_detection_per_chrom(
         log_debug(logger, f'Output: {output_dir}/{filenames["ranking"]}')
         
         if RESULTS['flipping'] is None:
-            RESULTS['flipping'] = open_pickle(os.path.join(output_dir, filenames['flipping']))
+            RESULTS['flipping'] = _load_stage(output_dir, filenames, 'flipping')
         
         if use_original_rank:
             logger.info(f'Using original rank from detection. Skipping rank_loci() function.')
@@ -280,7 +301,7 @@ def run_loci_detection_per_chrom(
         if RESULTS['ranking'] is None:
             if use_original_rank:
                 if RESULTS['flipping'] is None:
-                    RESULTS['flipping'] = open_pickle(os.path.join(output_dir, filenames['flipping']))
+                    RESULTS['flipping'] = _load_stage(output_dir, filenames, 'flipping')
                 RESULTS['ranking'] = copy_list_of_selection_points(RESULTS['flipping'])
             else:
                 ranking_locus_iterations = open_pickle(os.path.join(output_dir, filenames['ranking']))
@@ -302,7 +323,7 @@ def run_loci_detection_per_chrom(
         log_debug(logger, f'Output: {output_dir}/{filenames["limiting"]}')
         
         if RESULTS['within_ci_filtering'] is None:
-            RESULTS['within_ci_filtering'] = open_pickle(os.path.join(output_dir, filenames['within_ci_filtering']))
+            RESULTS['within_ci_filtering'] = _load_stage(output_dir, filenames, 'within_ci_filtering')
         
         RESULTS['limiting'] = limiting_fitness(
             cur_chrom=cur_chrom,
@@ -325,7 +346,7 @@ def run_loci_detection_per_chrom(
         log_debug(logger, f'Output: {output_dir}/{filenames["optimizing_intermediate"]}')
         
         if RESULTS['limiting'] is None:
-            RESULTS['limiting'] = open_pickle(os.path.join(output_dir, filenames['limiting']))
+            RESULTS['limiting'] = _load_stage(output_dir, filenames, 'limiting')
         
         RESULTS['optimizing_intermediate'], all_losses = final_optimization_step(
             cur_chrom=cur_chrom,
@@ -343,7 +364,7 @@ def run_loci_detection_per_chrom(
         log_debug(logger, f'Output: {output_dir}/{filenames["loci_widths_intermediate"]}')
         
         if RESULTS['optimizing_intermediate'] is None:
-            RESULTS['optimizing_intermediate'] = open_pickle(os.path.join(output_dir, filenames['optimizing_intermediate']))
+            RESULTS['optimizing_intermediate'] = _load_stage(output_dir, filenames, 'optimizing_intermediate')
         
         RESULTS['loci_widths_intermediate'] = infer_loci_widths(
             cur_chrom=cur_chrom,
@@ -365,10 +386,10 @@ def run_loci_detection_per_chrom(
         log_debug(logger, f'Output: {output_dir}/{filenames["merging"]}')
         
         if RESULTS['optimizing_intermediate'] is None:
-            RESULTS['optimizing_intermediate'] = open_pickle(os.path.join(output_dir, filenames['optimizing_intermediate']))
+            RESULTS['optimizing_intermediate'] = _load_stage(output_dir, filenames, 'optimizing_intermediate')
         
         if RESULTS['loci_widths_intermediate'] is None:
-            RESULTS['loci_widths_intermediate'] = open_pickle(os.path.join(output_dir, filenames['loci_widths_intermediate']))
+            RESULTS['loci_widths_intermediate'] = _load_stage(output_dir, filenames, 'loci_widths_intermediate')
         
         RESULTS['merging'], merged_conv, removed_loci, loci_to_remove = merge_overlapping_loci(
             cur_chrom=cur_chrom,
@@ -389,7 +410,7 @@ def run_loci_detection_per_chrom(
         input_source = 'flipping' if which == 'fast' else 'merging'
 
         if RESULTS[input_source] is None:
-            RESULTS[input_source] = open_pickle(os.path.join(output_dir, filenames[input_source]))
+            RESULTS[input_source] = _load_stage(output_dir, filenames, input_source)
    
         RESULTS['optimizing'], _ = final_optimization_step(
             cur_chrom=cur_chrom,
@@ -407,7 +428,7 @@ def run_loci_detection_per_chrom(
         log_debug(logger, f'Output: {output_dir}/{filenames["loci_widths_intermediate_2"]}')
         
         if RESULTS['optimizing'] is None:
-            RESULTS['optimizing'] = open_pickle(os.path.join(output_dir, filenames['optimizing']))
+            RESULTS['optimizing'] = _load_stage(output_dir, filenames, 'optimizing')
         
         RESULTS['loci_widths_intermediate_2'] = infer_loci_widths(
             cur_chrom=cur_chrom,
@@ -429,9 +450,9 @@ def run_loci_detection_per_chrom(
         log_debug(logger, f'Output: {output_dir}/{filenames["filter_loci_intermediate_1"]}')
         
         if RESULTS['loci_widths_intermediate_2'] is None:
-            RESULTS['loci_widths_intermediate_2'] = open_pickle(os.path.join(output_dir, filenames['loci_widths_intermediate_2']))
+            RESULTS['loci_widths_intermediate_2'] = _load_stage(output_dir, filenames, 'loci_widths_intermediate_2')
         if RESULTS['optimizing'] is None:
-            RESULTS['optimizing'] = open_pickle(os.path.join(output_dir, filenames['optimizing']))
+            RESULTS['optimizing'] = _load_stage(output_dir, filenames, 'optimizing')
         
         RESULTS['filter_loci_intermediate_1'] = filter_loci(
             cur_chrom=cur_chrom,
@@ -460,7 +481,7 @@ def run_loci_detection_per_chrom(
         input_source = 'optimizing' if which == 'fast' else 'filter_loci_intermediate_1'
         
         if RESULTS[input_source] is None:
-            RESULTS[input_source] = open_pickle(os.path.join(output_dir, filenames[input_source]))
+            RESULTS[input_source] = _load_stage(output_dir, filenames, input_source)
         
         RESULTS['final_within_ci_filtering'] = within_ci_fitness_filter(
             cur_chrom=cur_chrom,
@@ -479,7 +500,7 @@ def run_loci_detection_per_chrom(
         log_debug(logger, f'Output: {output_dir}/{filenames["final_filter_loci"]}')
         
         if RESULTS['final_within_ci_filtering'] is None:
-            RESULTS['final_within_ci_filtering'] = open_pickle(os.path.join(output_dir, filenames['final_within_ci_filtering']))
+            RESULTS['final_within_ci_filtering'] = _load_stage(output_dir, filenames, 'final_within_ci_filtering')
         
         RESULTS['final_filter_loci'] = filter_loci(
             cur_chrom=cur_chrom,
@@ -501,7 +522,7 @@ def run_loci_detection_per_chrom(
         log_debug(logger, f'Output: {output_dir}/{filenames["final_limiting"]}')
         
         if RESULTS['final_filter_loci'] is None:
-            RESULTS['final_filter_loci'] = open_pickle(os.path.join(output_dir, filenames['final_filter_loci']))
+            RESULTS['final_filter_loci'] = _load_stage(output_dir, filenames, 'final_filter_loci')
         
         RESULTS['final_limiting'] = limiting_fitness(
             cur_chrom=cur_chrom,
@@ -526,7 +547,7 @@ def run_loci_detection_per_chrom(
     else:
         if 'final_filter_loci' in which_steps and 'final_limiting' not in which_steps:
             if RESULTS['final_filter_loci'] is None:
-                RESULTS['final_filter_loci'] = open_pickle(os.path.join(output_dir, filenames['final_filter_loci']))
+                RESULTS['final_filter_loci'] = _load_stage(output_dir, filenames, 'final_filter_loci')
             RESULTS['final_selection_points'] = copy_list_of_selection_points(RESULTS['final_filter_loci'])
             save_pickle(RESULTS['final_selection_points'], os.path.join(output_dir, filenames['final_selection_points']))
 
@@ -537,7 +558,7 @@ def run_loci_detection_per_chrom(
         log_debug(logger, f'Output: {output_dir}/{filenames["final_loci_widths"]}')
         
         if RESULTS['final_selection_points'] is None:
-            RESULTS['final_selection_points'] = open_pickle(os.path.join(output_dir, filenames['final_selection_points']))
+            RESULTS['final_selection_points'] = _load_stage(output_dir, filenames, 'final_selection_points')
         
         RESULTS['final_loci_widths'] = infer_loci_widths(
             cur_chrom=cur_chrom,
@@ -559,7 +580,7 @@ def run_loci_detection_per_chrom(
     #     log_debug(logger, f'Output: {output_dir}/{filenames["one_by_one"]}')
         
     #     if RESULTS['final_selection_points'] is None:
-    #         RESULTS['final_selection_points'] = open_pickle(os.path.join(output_dir, filenames['final_selection_points']))
+    #         RESULTS['final_selection_points'] = _load_stage(output_dir, filenames, 'final_selection_points')
         
     #     RESULTS['one_by_one'] = add_loci_one_by_one(
     #         cur_chrom=chrom,
