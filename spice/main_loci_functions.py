@@ -442,6 +442,13 @@ def run_loci_detection_per_chrom(
             n_iterations_optim=filter_N_iterations_optim,
             show_progress_optim=False,
             max_deviation_optim=0.00001,
+            # Both thresholds must be passed here as well as to final_filter_loci below: without
+            # them this call silently used filter_loci's own signature defaults, so configuring
+            # either key changed only the final stage. That is the smaller one -- on TCGA this
+            # intermediate filter culls 1896 -> 989 loci against final_filter_loci's 989 -> 928, so
+            # the un-plumbed stage governed ~15x as many loci as the configurable one.
+            th_locus_prominence=th_locus_prominence,
+            th_locus_mean_fitness=th_locus_mean_fitness,
             calc_new_force_new=overwrite,
             calc_new_filename=os.path.join(output_dir, filenames['filter_loci_intermediate_1']))
     
