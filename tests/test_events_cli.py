@@ -7,6 +7,8 @@ import subprocess
 import tempfile
 import shutil
 import pytest
+
+import conftest
 import yaml
 
 import pandas as pd
@@ -47,6 +49,10 @@ def temp_workspace():
             'input_files': {
                 'copynumber': os.path.join(data_dir, 'example_data.tsv'),
                 'sv': os.path.join(data_dir, 'example_sv_data.tsv'),
+                # spice/plot.py loads the observed tables at module import, so `spice plotting`
+                # needs them even though event inference does not. The CLI runs in a subprocess
+                # with this config, which wins over conftest's injection into the parent process.
+                **conftest.TEST_OBSERVED_FILES,
             },
             'directories': {
                 'base_dir': tmpdir,
